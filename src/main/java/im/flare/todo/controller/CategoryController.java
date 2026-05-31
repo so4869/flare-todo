@@ -1,0 +1,54 @@
+package im.flare.todo.controller;
+
+import im.flare.todo.dto.ApiResponse;
+import im.flare.todo.dto.CategoryRequest;
+import im.flare.todo.dto.CategoryResponse;
+import im.flare.todo.entity.User;
+import im.flare.todo.service.CategoryService;
+import im.flare.todo.service.UserService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/categories")
+@RequiredArgsConstructor
+public class CategoryController {
+
+    private final CategoryService categoryService;
+    private final UserService userService;
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAll(Authentication auth) {
+        User user = userService.findByUsername(auth.getName());
+        List<CategoryResponse> list = categoryService.getCategories(user)
+                .stream().map(CategoryResponse::from).toList();
+        return ResponseEntity.ok(ApiResponse.success(list));
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<CategoryResponse>> add(
+            @RequestBody CategoryRequest request, Authentication auth) {
+        try {
+            User user = userService.findByUsername(auth.getName());
+            CategoryResponse resp = CategoryResponse.from(categoryService.addCategory(request, user));
+            return ResponseEntity.ok(ApiResponse.success(resp));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Long id, Authentication auth) {
+        try {
+            User user = userService.findByUsername(auth.getName());
+            categoryService.deleteCategory(id, user);
+            return ResponseEntity.ok(ApiResponse.success(null));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+}

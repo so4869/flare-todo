@@ -1,0 +1,25 @@
+server:
+  port: 9090
+
+spring:
+  application:
+    name: flare-todo
+  profiles:
+    active: local
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        show_sql: false
+  datasource:
+    url: URL
+    username: USERNAME
+    password: PASSWORD
+    driver-class-name: DRIVERCLASSNAME
+
+jwt:
+  secret: ${JWT_SECRET:flare-todo-default-secret-key-change-in-production}
+  expiration: 86400000  # 24시간 (ms)
+

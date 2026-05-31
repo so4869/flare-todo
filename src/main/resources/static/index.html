@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flare Todo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8f9fa; }
+    .sidebar { min-height: calc(100vh - 56px); background: #fff; border-right: 1px solid #dee2e6; }
+    .category-item { cursor: pointer; border-radius: 6px; padding: 6px 10px; margin-bottom: 2px; transition: background .15s; }
+    .category-item:hover { background: #f0f2f5; }
+    .category-item.active { background: #e7f1ff; color: #0d6efd; font-weight: 500; }
+    .todo-item { background: #fff; border: 1px solid #e9ecef; border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; transition: box-shadow .15s; }
+    .todo-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .todo-title { font-weight: 500; cursor: pointer; text-decoration: none; color: #212529; }
+    .todo-title:hover { color: #0d6efd; }
+    .todo-title.completed-text { text-decoration: line-through; color: #adb5bd; }
+    .todo-checkbox { width: 20px; height: 20px; cursor: pointer; }
+    .empty-state { text-align: center; padding: 60px 20px; color: #adb5bd; }
+    #sidebarToggle { display: none; }
+    @media (max-width: 768px) {
+      #sidebarToggle { display: inline-block; }
+      .sidebar { position: fixed; z-index: 1000; height: 100vh; top: 0; left: -100%; transition: left .25s; width: 260px !important; }
+      .sidebar.show { left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container-fluid">
+    <span class="navbar-brand fw-bold">Flare Todo</span>
+    <button id="sidebarToggle" class="btn btn-outline-light btn-sm me-2" onclick="toggleSidebar()">
+      <i class="bi bi-list"></i>
+    </button>
+    <div class="ms-auto d-flex align-items-center gap-2">
+      <span class="text-white small" id="usernameLabel"></span>
+      <button class="btn btn-outline-light btn-sm" onclick="logout()">로그아웃</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid p-0">
+  <div class="row g-0">
+
+    <!-- Sidebar -->
+    <div class="col-12 col-md-2 sidebar p-3" id="sidebar">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <span class="fw-semibold text-muted small">카테고리</span>
+        <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#categoryModal">
+          <i class="bi bi-plus"></i>
+        </button>
+      </div>
+      <div class="category-item d-flex align-items-center gap-2" id="cat-all" onclick="clearCategoryFilter()">
+        <i class="bi bi-list-task"></i><span>전체</span>
+      </div>
+      <div id="categoryList"></div>
+    </div>
+
+    <!-- Main content -->
+    <div class="col-12 col-md-10 p-4">
+      <!-- Filter tabs + Add button -->
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <ul class="nav nav-pills" id="filterTabs">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" onclick="selectFilter('all', this)">전체</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="selectFilter('active', this)">미완료</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" onclick="selectFilter('completed', this)">완료</a>
+          </li>
+        </ul>
+        <button class="btn btn-primary" onclick="openTodoModal()">
+          <i class="bi bi-plus-lg me-1"></i>새 할 일
+        </button>
+      </div>
+
+      <!-- Date range filter -->
+      <div class="card card-body py-2 px-3 mb-3 bg-light border">
+        <div class="row g-2 align-items-center flex-wrap">
+          <div class="col-auto"><small class="text-muted fw-semibold">생성일</small></div>
+          <div class="col-auto"><input type="date" id="createdFrom" class="form-control form-control-sm"></div>
+          <div class="col-auto text-muted">~</div>
+          <div class="col-auto"><input type="date" id="createdTo" class="form-control form-control-sm"></div>
+          <div class="col-auto ms-3"><small class="text-muted fw-semibold">완료일</small></div>
+          <div class="col-auto"><input type="date" id="completedFrom" class="form-control form-control-sm"></div>
+          <div class="col-auto text-muted">~</div>
+          <div class="col-auto"><input type="date" id="completedTo" class="form-control form-control-sm"></div>
+          <div class="col-auto ms-2">
+            <button class="btn btn-sm btn-primary" onclick="applyDateFilter()">검색</button>
+            <button class="btn btn-sm btn-outline-secondary ms-1" onclick="resetDateFilter()">초기화</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Selected category badge -->
+      <div id="categoryBadgeArea" class="mb-3"></div>
+
+      <!-- Todo count -->
+      <p class="text-muted small mb-2" id="todoCount"></p>
+
+      <!-- Todo list -->
+      <div id="todoList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Category Add Modal -->
+<div class="modal fade" id="categoryModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">카테고리 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="catAlertBox" class="alert d-none"></div>
+        <input type="text" id="categoryName" class="form-control" placeholder="카테고리 이름" maxlength="50">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="addCategory()">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Todo Add/Edit Modal -->
+<div class="modal fade" id="todoModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="todoModalTitle">새 할 일</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="todoAlertBox" class="alert d-none"></div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">제목 <span class="text-danger">*</span></label>
+          <input type="text" id="todoTitle" class="form-control" placeholder="할 일 제목" maxlength="200">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">카테고리 <small class="text-muted fw-normal">(복수 선택 가능)</small></label>
+          <div class="border rounded p-2" style="max-height:120px;overflow-y:auto" id="categoryCheckboxes">
+            <span class="text-muted small">카테고리가 없습니다.</span>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">본문</label>
+          <textarea id="todoBody"></textarea>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="todoCompleted">
+          <label class="form-check-label" for="todoCompleted">완료 처리</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" id="saveTodoBtn" onclick="saveTodo()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Sidebar overlay (mobile) -->
+<div id="sidebarOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;" onclick="toggleSidebar()"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/tinymce/tinymce.min.js"></script>
+<script>
+  async function authFetch(url, options = {}) {
+    const token = localStorage.getItem('jwt_token');
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      localStorage.removeItem('jwt_token');
+      location.href = '/login.html';
+      return null;
+    }
+    return res;
+  }
+
+  let currentFilter = 'all';
+  let selectedCategoryIds = [];
+  let editingTodoId = null;
+  let pendingEditorContent = '';
+  let categories = [];
+  let dateFilters = { createdFrom: '', createdTo: '', completedFrom: '', completedTo: '' };
+
+  // ── Auth check ─────────────────────────────────────────────
+  (async () => {
+    if (!localStorage.getItem('jwt_token')) { location.href = '/login.html'; return; }
+    const res = await authFetch('/api/auth/me');
+    if (!res) return;
+    const data = await res.json();
+    document.getElementById('usernameLabel').textContent = data.data.username + '님';
+    await loadCategories();
+    await loadTodos();
+  })();
+
+  async function logout() {
+    await authFetch('/api/auth/logout', { method: 'POST' });
+    localStorage.removeItem('jwt_token');
+    location.href = '/login.html';
+  }
+
+  // ── Categories ─────────────────────────────────────────────
+  async function loadCategories() {
+    const res = await authFetch('/api/categories');
+    const data = await res.json();
+    categories = data.data || [];
+    renderCategories();
+  }
+
+  function renderCategories() {
+    const allEl = document.getElementById('cat-all');
+    allEl.classList.toggle('active', selectedCategoryIds.length === 0);
+
+    document.getElementById('categoryList').innerHTML = categories.map(c => `
+      <div class="category-item d-flex justify-content-between align-items-center"
+           id="cat-${c.id}" onclick="toggleCategory(${c.id})">
+        <div class="d-flex align-items-center gap-2">
+          <input type="checkbox" class="form-check-input" id="catFilter_${c.id}"
+                 ${selectedCategoryIds.includes(c.id) ? 'checked' : ''}
+                 onclick="event.stopPropagation(); toggleCategory(${c.id})">
+          <label class="mb-0" for="catFilter_${c.id}">
+            <i class="bi bi-tag me-1"></i>${escHtml(c.name)}
+          </label>
+        </div>
+        <button class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteCategory(event,${c.id})">
+          <i class="bi bi-x-lg" style="font-size:.75rem"></i>
+        </button>
+      </div>`).join('');
+  }
+
+  function toggleCategory(id) {
+    const idx = selectedCategoryIds.indexOf(id);
+    if (idx === -1) selectedCategoryIds.push(id);
+    else selectedCategoryIds.splice(idx, 1);
+    renderCategories();
+    updateCategoryBadge();
+    loadTodos();
+  }
+
+  function clearCategoryFilter() {
+    selectedCategoryIds = [];
+    renderCategories();
+    updateCategoryBadge();
+    loadTodos();
+  }
+
+  function updateCategoryBadge() {
+    const badge = document.getElementById('categoryBadgeArea');
+    if (!selectedCategoryIds.length) { badge.innerHTML = ''; return; }
+    badge.innerHTML = selectedCategoryIds.map(id => {
+      const cat = categories.find(c => c.id === id);
+      return cat ? `<span class="badge bg-primary-subtle text-primary border border-primary-subtle me-1 mb-1">
+        <i class="bi bi-tag me-1"></i>${escHtml(cat.name)}
+        <i class="bi bi-x ms-1" style="cursor:pointer" onclick="toggleCategory(${id})"></i>
+      </span>` : '';
+    }).join('');
+  }
+
+  function populateCategorySelect(selectedIds = []) {
+    const container = document.getElementById('categoryCheckboxes');
+    if (!categories.length) {
+      container.innerHTML = '<span class="text-muted small">카테고리가 없습니다.</span>';
+      return;
+    }
+    container.innerHTML = categories.map(c => `
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="${c.id}" id="catChk_${c.id}"
+               ${selectedIds.includes(c.id) ? 'checked' : ''}>
+        <label class="form-check-label small" for="catChk_${c.id}">${escHtml(c.name)}</label>
+      </div>`).join('');
+  }
+
+  function getSelectedCategoryIds() {
+    return Array.from(document.querySelectorAll('#categoryCheckboxes input:checked'))
+      .map(cb => Number(cb.value));
+  }
+
+  async function addCategory() {
+    const name = document.getElementById('categoryName').value.trim();
+    const box = document.getElementById('catAlertBox');
+    if (!name) { showAlert(box, 'danger', '카테고리 이름을 입력하세요.'); return; }
+    const res = await authFetch('/api/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('categoryName').value = '';
+      bootstrap.Modal.getInstance(document.getElementById('categoryModal')).hide();
+      await loadCategories();
+    } else {
+      showAlert(box, 'danger', data.message);
+    }
+  }
+
+  async function deleteCategory(e, id) {
+    e.stopPropagation();
+    if (!confirm('카테고리를 삭제하면 해당 할 일의 카테고리가 해제됩니다. 삭제하시겠습니까?')) return;
+    const res = await authFetch(`/api/categories/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      const idx = selectedCategoryIds.indexOf(id);
+      if (idx !== -1) selectedCategoryIds.splice(idx, 1);
+      await loadCategories();
+      updateCategoryBadge();
+      await loadTodos();
+    }
+  }
+
+  function selectFilter(filter, el) {
+    currentFilter = filter;
+    document.querySelectorAll('#filterTabs .nav-link').forEach(a => a.classList.remove('active'));
+    el.classList.add('active');
+    loadTodos();
+  }
+
+  // ── Todos ──────────────────────────────────────────────────
+  async function loadTodos() {
+    const params = new URLSearchParams({ filter: currentFilter });
+    selectedCategoryIds.forEach(id => params.append('categoryIds', id));
+    if (dateFilters.createdFrom)   params.set('createdFrom',    dateFilters.createdFrom);
+    if (dateFilters.createdTo)     params.set('createdTo',      dateFilters.createdTo);
+    if (dateFilters.completedFrom) params.set('completedFrom',  dateFilters.completedFrom);
+    if (dateFilters.completedTo)   params.set('completedTo',    dateFilters.completedTo);
+    const res = await authFetch(`/api/todos?${params}`);
+    const data = await res.json();
+    renderTodos(data.data || []);
+  }
+
+  function applyDateFilter() {
+    dateFilters.createdFrom   = document.getElementById('createdFrom').value;
+    dateFilters.createdTo     = document.getElementById('createdTo').value;
+    dateFilters.completedFrom = document.getElementById('completedFrom').value;
+    dateFilters.completedTo   = document.getElementById('completedTo').value;
+    loadTodos();
+  }
+
+  function resetDateFilter() {
+    dateFilters = { createdFrom: '', createdTo: '', completedFrom: '', completedTo: '' };
+    ['createdFrom','createdTo','completedFrom','completedTo'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    loadTodos();
+  }
+
+  function renderTodos(todos) {
+    const container = document.getElementById('todoList');
+    const count = document.getElementById('todoCount');
+    count.textContent = `총 ${todos.length}건`;
+    if (!todos.length) {
+      container.innerHTML = `<div class="empty-state">
+        <i class="bi bi-inbox" style="font-size:2.5rem"></i>
+        <p class="mt-2">할 일이 없습니다.</p></div>`;
+      return;
+    }
+    container.innerHTML = todos.map(t => `
+      <div class="todo-item">
+        <div class="d-flex align-items-start gap-3">
+          <input type="checkbox" class="todo-checkbox form-check-input mt-1" ${t.completed ? 'checked' : ''}
+            onchange="toggleTodo(${t.id})" title="완료 토글">
+          <div class="flex-grow-1 min-width-0">
+            <a href="/detail.html?id=${t.id}" class="todo-title ${t.completed ? 'completed-text' : ''}">
+              ${escHtml(t.title)}
+            </a>
+            <div class="d-flex flex-wrap gap-2 mt-1 align-items-center">
+              ${(t.categories || []).map(c => `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                <i class="bi bi-tag me-1"></i>${escHtml(c.name)}</span>`).join('')}
+              ${t.completed
+                ? '<span class="badge bg-success-subtle text-success border border-success-subtle">완료</span>'
+                : '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">미완료</span>'}
+              <span class="text-muted small">${fmtDate(t.createdAt)}</span>
+            </div>
+          </div>
+          <div class="d-flex gap-1 flex-shrink-0">
+            <button class="btn btn-sm btn-outline-secondary" onclick="openEditTodoModal(${t.id})" title="수정">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteTodo(${t.id})" title="삭제">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  async function toggleTodo(id) {
+    const res = await authFetch(`/api/todos/${id}/toggle`, { method: 'PATCH' });
+    const data = await res.json();
+    if (data.success) await loadTodos();
+  }
+
+  async function deleteTodo(id) {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const res = await authFetch(`/api/todos/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) await loadTodos();
+  }
+
+  // ── Todo Modal ─────────────────────────────────────────────
+  const todoModal = document.getElementById('todoModal');
+
+  todoModal.addEventListener('shown.bs.modal', () => {
+    tinymce.init({
+      selector: '#todoBody',
+      base_url: '/tinymce',
+      suffix: '.min',
+      height: 320,
+      plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
+      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link | removeformat | code',
+      menubar: false,
+      branding: false,
+      setup(editor) {
+        editor.on('init', () => {
+          if (pendingEditorContent !== undefined) {
+            editor.setContent(pendingEditorContent);
+          }
+        });
+      }
+    });
+  });
+
+  todoModal.addEventListener('hide.bs.modal', () => {
+    if (tinymce.get('todoBody')) tinymce.remove('#todoBody');
+  });
+
+  function openTodoModal() {
+    editingTodoId = null;
+    pendingEditorContent = '';
+    document.getElementById('todoModalTitle').textContent = '새 할 일';
+    document.getElementById('todoTitle').value = '';
+    document.getElementById('todoCompleted').checked = false;
+    document.getElementById('todoAlertBox').className = 'alert d-none';
+    populateCategorySelect([...selectedCategoryIds]);
+    new bootstrap.Modal(todoModal).show();
+  }
+
+  async function openEditTodoModal(id) {
+    const res = await authFetch(`/api/todos/${id}`);
+    const data = await res.json();
+    if (!data.success) return;
+    const t = data.data;
+    editingTodoId = id;
+    pendingEditorContent = t.body || '';
+    document.getElementById('todoModalTitle').textContent = '할 일 수정';
+    document.getElementById('todoTitle').value = t.title;
+    document.getElementById('todoCompleted').checked = t.completed;
+    document.getElementById('todoAlertBox').className = 'alert d-none';
+    populateCategorySelect((t.categories || []).map(c => c.id));
+    new bootstrap.Modal(todoModal).show();
+  }
+
+  async function saveTodo() {
+    const box = document.getElementById('todoAlertBox');
+    const title = document.getElementById('todoTitle').value.trim();
+    if (!title) { showAlert(box, 'danger', '제목을 입력하세요.'); return; }
+
+    const editor = tinymce.get('todoBody');
+    const body = editor ? editor.getContent() : '';
+    const categoryIds = getSelectedCategoryIds();
+    const completed = document.getElementById('todoCompleted').checked;
+
+    const payload = { title, body, categoryIds, completed };
+    const url = editingTodoId ? `/api/todos/${editingTodoId}` : '/api/todos';
+    const method = editingTodoId ? 'PUT' : 'POST';
+
+    const res = await authFetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.success) {
+      bootstrap.Modal.getInstance(todoModal).hide();
+      await loadTodos();
+    } else {
+      showAlert(box, 'danger', data.message);
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+  function escHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' });
+  }
+
+  function showAlert(el, type, msg) {
+    el.className = `alert alert-${type}`;
+    el.textContent = msg;
+  }
+
+  function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    const open = sb.classList.toggle('show');
+    ov.style.display = open ? 'block' : 'none';
+  }
+
+  // Enter key in category modal
+  document.getElementById('categoryName').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addCategory();
+  });
+</script>
+</body>
+</html>
