@@ -62,19 +62,28 @@
 
     <!-- Main content -->
     <div class="col-12 col-md-10 p-4">
-      <!-- Filter tabs + Add button -->
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <ul class="nav nav-pills" id="filterTabs">
-          <li class="nav-item">
-            <a class="nav-link active" href="#" onclick="selectFilter('all', this)">전체</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#" onclick="selectFilter('active', this)">미완료</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link" href="#" onclick="selectFilter('completed', this)">완료</a>
-          </li>
-        </ul>
+      <!-- Filter tabs + Sort + Add button -->
+      <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <ul class="nav nav-pills mb-0" id="filterTabs">
+            <li class="nav-item">
+              <a class="nav-link active" href="#" onclick="selectFilter('all', this)">전체</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#" onclick="selectFilter('active', this)">미완료</a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" href="#" onclick="selectFilter('completed', this)">완료</a>
+            </li>
+          </ul>
+          <select id="sortSelect" class="form-select form-select-sm" style="width:auto"
+                  onchange="selectSort(this.value)">
+            <option value="createdAt_desc">생성일 최신순</option>
+            <option value="createdAt_asc">생성일 오래된순</option>
+            <option value="completedAt_desc">완료일 최신순</option>
+            <option value="completedAt_asc">완료일 오래된순</option>
+          </select>
+        </div>
         <button class="btn btn-primary" onclick="openTodoModal()">
           <i class="bi bi-plus-lg me-1"></i>새 할 일
         </button>
@@ -192,6 +201,7 @@
   let pendingEditorContent = '';
   let categories = [];
   let dateFilters = { createdFrom: '', createdTo: '', completedFrom: '', completedTo: '' };
+  let currentSort = 'createdAt_desc';
 
   // ── Auth check ─────────────────────────────────────────────
   (async () => {
@@ -327,8 +337,14 @@
   }
 
   // ── Todos ──────────────────────────────────────────────────
+  function selectSort(value) {
+    currentSort = value;
+    loadTodos();
+  }
+
   async function loadTodos() {
-    const params = new URLSearchParams({ filter: currentFilter });
+    const [sortBy, sortDir] = currentSort.split('_');
+    const params = new URLSearchParams({ filter: currentFilter, sortBy, sortDir });
     selectedCategoryIds.forEach(id => params.append('categoryIds', id));
     if (dateFilters.createdFrom)   params.set('createdFrom',    dateFilters.createdFrom);
     if (dateFilters.createdTo)     params.set('createdTo',      dateFilters.createdTo);
@@ -380,7 +396,8 @@
               ${t.completed
                 ? '<span class="badge bg-success-subtle text-success border border-success-subtle">완료</span>'
                 : '<span class="badge bg-warning-subtle text-warning border border-warning-subtle">미완료</span>'}
-              <span class="text-muted small">${fmtDate(t.createdAt)}</span>
+              <span class="text-muted small"><i class="bi bi-calendar3 me-1"></i>${fmtDate(t.createdAt)}</span>
+              ${t.completedAt ? `<span class="text-muted small"><i class="bi bi-check-circle me-1 text-success"></i>${fmtDate(t.completedAt)}</span>` : ''}
             </div>
           </div>
           <div class="d-flex gap-1 flex-shrink-0">

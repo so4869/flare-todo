@@ -32,11 +32,13 @@ public class TodoController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate createdFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate createdTo,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate completedFrom,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate completedTo
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate completedTo,
+            @RequestParam(defaultValue = "createdAt") String sortBy,
+            @RequestParam(defaultValue = "desc") String sortDir
     ) {
         User user = userService.findByUsername(auth.getName());
         List<TodoResponse> list = todoService.getTodos(user, filter, categoryIds,
-                        createdFrom, createdTo, completedFrom, completedTo)
+                        createdFrom, createdTo, completedFrom, completedTo, sortBy, sortDir)
                 .stream().map(TodoResponse::from).toList();
         return ResponseEntity.ok(ApiResponse.success(list));
     }

@@ -30,7 +30,8 @@ public class TodoService {
 
     public List<Todo> getTodos(User user, String filter, List<Long> categoryIds,
                                LocalDate createdFrom, LocalDate createdTo,
-                               LocalDate completedFrom, LocalDate completedTo) {
+                               LocalDate completedFrom, LocalDate completedTo,
+                               String sortBy, String sortDir) {
 
         Specification<Todo> spec = TodoSpec.ofUser(user);
 
@@ -50,7 +51,7 @@ public class TodoService {
         if (completedFrom != null) spec = spec.and(TodoSpec.completedFrom(completedFrom));
         if (completedTo   != null) spec = spec.and(TodoSpec.completedTo(completedTo));
 
-        return todoRepository.findAll(spec, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return todoRepository.findAll(spec, buildSort(sortBy, sortDir));
     }
 
     public Todo getTodo(Long id, User user) {
@@ -106,6 +107,15 @@ public class TodoService {
         todo.setCompleted(nowCompleted);
         todo.setCompletedAt(nowCompleted ? LocalDateTime.now() : null);
         return todoRepository.save(todo);
+    }
+
+    private Sort buildSort(String sortBy, String sortDir) {
+        Sort.Direction dir = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
+        if ("completedAt".equals(sortBy)) {
+            // completedAt이 null인 항목(미완료)은 항상 마지막
+            return Sort.by(new Sort.Order(dir, "completedAt").nullsLast());
+        }
+        return Sort.by(dir, "createdAt");
     }
 
     private Set<Category> resolveCategories(List<Long> ids, User user) {
