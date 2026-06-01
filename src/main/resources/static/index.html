@@ -19,6 +19,10 @@
     .todo-title.completed-text { text-decoration: line-through; color: #adb5bd; }
     .todo-checkbox { width: 20px; height: 20px; cursor: pointer; }
     .empty-state { text-align: center; padding: 60px 20px; color: #adb5bd; }
+    .drag-handle { cursor: grab; color: #adb5bd; }
+    .drag-handle:active { cursor: grabbing; }
+    .category-item.drag-over { background: #cfe2ff !important; border: 1px dashed #0d6efd; }
+    .category-item.dragging { opacity: .4; }
     #sidebarToggle { display: none; }
     @media (max-width: 768px) {
       #sidebarToggle { display: inline-block; }
@@ -38,6 +42,9 @@
     </button>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span class="text-white small" id="usernameLabel"></span>
+      <button class="btn btn-outline-light btn-sm" onclick="openTzModal()" title="시간대 설정">
+        <i class="bi bi-clock me-1"></i><span id="tzLabel">Asia/Seoul</span>
+      </button>
       <button class="btn btn-outline-light btn-sm" onclick="logout()">로그아웃</button>
     </div>
   </div>
@@ -176,6 +183,41 @@
   </div>
 </div>
 
+<!-- Timezone Modal -->
+<div class="modal fade" id="tzModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-clock me-2"></i>시간대 설정</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <select id="tzSelect" class="form-select form-select-sm">
+          <option value="UTC">UTC (UTC+0)</option>
+          <option value="Asia/Seoul">Asia/Seoul (KST, UTC+9)</option>
+          <option value="Asia/Tokyo">Asia/Tokyo (JST, UTC+9)</option>
+          <option value="Asia/Shanghai">Asia/Shanghai (CST, UTC+8)</option>
+          <option value="Asia/Singapore">Asia/Singapore (SGT, UTC+8)</option>
+          <option value="Asia/Kolkata">Asia/Kolkata (IST, UTC+5:30)</option>
+          <option value="Europe/London">Europe/London (GMT/BST)</option>
+          <option value="Europe/Paris">Europe/Paris (CET/CEST)</option>
+          <option value="Europe/Berlin">Europe/Berlin (CET/CEST)</option>
+          <option value="America/New_York">America/New_York (EST/EDT)</option>
+          <option value="America/Chicago">America/Chicago (CST/CDT)</option>
+          <option value="America/Los_Angeles">America/Los_Angeles (PST/PDT)</option>
+          <option value="America/Sao_Paulo">America/Sao_Paulo (BRT)</option>
+          <option value="Australia/Sydney">Australia/Sydney (AEST/AEDT)</option>
+          <option value="Pacific/Auckland">Pacific/Auckland (NZST/NZDT)</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary btn-sm" onclick="saveTz()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Sidebar overlay (mobile) -->
 <div id="sidebarOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;" onclick="toggleSidebar()"></div>
 
@@ -195,6 +237,8 @@
     return res;
   }
 
+  let userTimezone = 'Asia/Seoul';
+
   let currentFilter = 'all';
   let selectedCategoryIds = [];
   let editingTodoId = null;
@@ -203,14 +247,57 @@
   let dateFilters = { createdFrom: '', createdTo: '', completedFrom: '', completedTo: '' };
   let currentSort = 'createdAt_desc';
 
+  const SEARCH_STATE_KEY = 'flare_todo_search';
+
+  function saveSearchState() {
+    localStorage.setItem(SEARCH_STATE_KEY, JSON.stringify({
+      filter: currentFilter,
+      categoryIds: selectedCategoryIds,
+      sort: currentSort,
+      dateFilters
+    }));
+  }
+
+  function loadSearchState() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SEARCH_STATE_KEY) || '{}');
+      if (s.filter)      currentFilter      = s.filter;
+      if (s.categoryIds) selectedCategoryIds = s.categoryIds;
+      if (s.sort)        currentSort        = s.sort;
+      if (s.dateFilters) dateFilters        = { ...dateFilters, ...s.dateFilters };
+    } catch (_) {}
+  }
+
+  function restoreSearchUI() {
+    // 필터 탭
+    const filterIdx = { all: 0, active: 1, completed: 2 };
+    const tabs = document.querySelectorAll('#filterTabs .nav-link');
+    tabs.forEach(a => a.classList.remove('active'));
+    tabs[filterIdx[currentFilter] ?? 0]?.classList.add('active');
+    // 정렬
+    document.getElementById('sortSelect').value = currentSort;
+    // 날짜 필터 입력값
+    document.getElementById('createdFrom').value   = dateFilters.createdFrom;
+    document.getElementById('createdTo').value     = dateFilters.createdTo;
+    document.getElementById('completedFrom').value = dateFilters.completedFrom;
+    document.getElementById('completedTo').value   = dateFilters.completedTo;
+  }
+
   // ── Auth check ─────────────────────────────────────────────
   (async () => {
     if (!localStorage.getItem('jwt_token')) { location.href = '/login.html'; return; }
     const res = await authFetch('/api/auth/me');
     if (!res) return;
     const data = await res.json();
+    userTimezone = data.data.timezone || 'Asia/Seoul';
     document.getElementById('usernameLabel').textContent = data.data.username + '님';
+    document.getElementById('tzLabel').textContent = userTimezone;
+    loadSearchState();
     await loadCategories();
+    // 삭제된 카테고리 ID는 필터에서 제거
+    selectedCategoryIds = selectedCategoryIds.filter(id => categories.some(c => c.id === id));
+    restoreSearchUI();
+    updateCategoryBadge();
     await loadTodos();
   })();
 
@@ -229,13 +316,20 @@
   }
 
   function renderCategories() {
-    const allEl = document.getElementById('cat-all');
-    allEl.classList.toggle('active', selectedCategoryIds.length === 0);
+    document.getElementById('cat-all').classList.toggle('active', selectedCategoryIds.length === 0);
 
     document.getElementById('categoryList').innerHTML = categories.map(c => `
       <div class="category-item d-flex justify-content-between align-items-center"
-           id="cat-${c.id}" onclick="toggleCategory(${c.id})">
+           id="cat-${c.id}"
+           draggable="true"
+           ondragstart="catDragStart(event,${c.id})"
+           ondragover="catDragOver(event)"
+           ondragleave="catDragLeave(event)"
+           ondrop="catDrop(event,${c.id})"
+           ondragend="catDragEnd(event)"
+           onclick="toggleCategory(${c.id})">
         <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-grip-vertical drag-handle" onclick="event.stopPropagation()"></i>
           <input type="checkbox" class="form-check-input" id="catFilter_${c.id}"
                  ${selectedCategoryIds.includes(c.id) ? 'checked' : ''}
                  onclick="event.stopPropagation(); toggleCategory(${c.id})">
@@ -249,10 +343,56 @@
       </div>`).join('');
   }
 
+  // ── Category drag-and-drop ─────────────────────────────────
+  let catDraggingId = null;
+
+  function catDragStart(e, id) {
+    catDraggingId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    // setTimeout으로 렌더 후 적용 (없으면 드래그 미리보기 이미지도 흐려짐)
+    setTimeout(() => document.getElementById(`cat-${id}`)?.classList.add('dragging'), 0);
+  }
+
+  function catDragEnd(e) {
+    if (catDraggingId) document.getElementById(`cat-${catDraggingId}`)?.classList.remove('dragging');
+    document.querySelectorAll('.category-item').forEach(el => el.classList.remove('drag-over'));
+    catDraggingId = null;
+  }
+
+  function catDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drag-over');
+  }
+
+  function catDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+  }
+
+  async function catDrop(e, targetId) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    if (!catDraggingId || catDraggingId === targetId) return;
+
+    const fromIdx = categories.findIndex(c => c.id === catDraggingId);
+    const toIdx   = categories.findIndex(c => c.id === targetId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    categories.splice(toIdx, 0, categories.splice(fromIdx, 1)[0]);
+    renderCategories();
+
+    const res = await authFetch('/api/categories/order', {
+      method: 'PUT',
+      body: JSON.stringify({ categoryIds: categories.map(c => c.id) })
+    });
+    if (res && !res.ok) await loadCategories(); // 실패 시 서버 상태로 복원
+  }
+
   function toggleCategory(id) {
     const idx = selectedCategoryIds.indexOf(id);
     if (idx === -1) selectedCategoryIds.push(id);
     else selectedCategoryIds.splice(idx, 1);
+    saveSearchState();
     renderCategories();
     updateCategoryBadge();
     loadTodos();
@@ -260,6 +400,7 @@
 
   function clearCategoryFilter() {
     selectedCategoryIds = [];
+    saveSearchState();
     renderCategories();
     updateCategoryBadge();
     loadTodos();
@@ -323,6 +464,7 @@
     if (data.success) {
       const idx = selectedCategoryIds.indexOf(id);
       if (idx !== -1) selectedCategoryIds.splice(idx, 1);
+      saveSearchState();
       await loadCategories();
       updateCategoryBadge();
       await loadTodos();
@@ -333,12 +475,14 @@
     currentFilter = filter;
     document.querySelectorAll('#filterTabs .nav-link').forEach(a => a.classList.remove('active'));
     el.classList.add('active');
+    saveSearchState();
     loadTodos();
   }
 
   // ── Todos ──────────────────────────────────────────────────
   function selectSort(value) {
     currentSort = value;
+    saveSearchState();
     loadTodos();
   }
 
@@ -360,6 +504,7 @@
     dateFilters.createdTo     = document.getElementById('createdTo').value;
     dateFilters.completedFrom = document.getElementById('completedFrom').value;
     dateFilters.completedTo   = document.getElementById('completedTo').value;
+    saveSearchState();
     loadTodos();
   }
 
@@ -368,6 +513,7 @@
     ['createdFrom','createdTo','completedFrom','completedTo'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    saveSearchState();
     loadTodos();
   }
 
@@ -512,10 +658,38 @@
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  function openTzModal() {
+    document.getElementById('tzSelect').value = userTimezone;
+    new bootstrap.Modal(document.getElementById('tzModal')).show();
+  }
+
+  async function saveTz() {
+    const tz = document.getElementById('tzSelect').value;
+    const res = await authFetch('/api/users/timezone', {
+      method: 'PUT',
+      body: JSON.stringify({ timezone: tz })
+    });
+    if (!res) return;
+    const data = await res.json();
+    if (data.success) {
+      userTimezone = tz;
+      document.getElementById('tzLabel').textContent = tz;
+      bootstrap.Modal.getInstance(document.getElementById('tzModal')).hide();
+      loadTodos();
+    }
+  }
+
   function fmtDate(iso) {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleDateString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit' });
+    const main = d.toLocaleString('ko-KR', {
+      timeZone: userTimezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+    const tzAbbr = new Intl.DateTimeFormat('en', { timeZone: userTimezone, timeZoneName: 'short' })
+      .formatToParts(d).find(p => p.type === 'timeZoneName')?.value ?? '';
+    return tzAbbr ? `${main} (${tzAbbr})` : main;
   }
 
   function showAlert(el, type, msg) {

@@ -6,7 +6,9 @@ import im.flare.todo.entity.User;
 import jakarta.persistence.criteria.JoinType;
 import org.springframework.data.jpa.domain.Specification;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 public class TodoSpec {
@@ -27,19 +29,23 @@ public class TodoSpec {
         return (root, query, cb) -> cb.equal(root.get("completed"), completed);
     }
 
-    public static Specification<Todo> createdFrom(LocalDate date) {
-        return (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("createdAt"), date.atStartOfDay());
+    public static Specification<Todo> createdFrom(LocalDate date, ZoneId zone) {
+        Instant from = date.atStartOfDay(zone).toInstant();
+        return (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("createdAt"), from);
     }
 
-    public static Specification<Todo> createdTo(LocalDate date) {
-        return (root, query, cb) -> cb.lessThan(root.get("createdAt"), date.plusDays(1).atStartOfDay());
+    public static Specification<Todo> createdTo(LocalDate date, ZoneId zone) {
+        Instant to = date.plusDays(1).atStartOfDay(zone).toInstant();
+        return (root, query, cb) -> cb.lessThan(root.get("createdAt"), to);
     }
 
-    public static Specification<Todo> completedFrom(LocalDate date) {
-        return (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("completedAt"), date.atStartOfDay());
+    public static Specification<Todo> completedFrom(LocalDate date, ZoneId zone) {
+        Instant from = date.atStartOfDay(zone).toInstant();
+        return (root, query, cb) -> cb.greaterThanOrEqualTo(root.get("completedAt"), from);
     }
 
-    public static Specification<Todo> completedTo(LocalDate date) {
-        return (root, query, cb) -> cb.lessThan(root.get("completedAt"), date.plusDays(1).atStartOfDay());
+    public static Specification<Todo> completedTo(LocalDate date, ZoneId zone) {
+        Instant to = date.plusDays(1).atStartOfDay(zone).toInstant();
+        return (root, query, cb) -> cb.lessThan(root.get("completedAt"), to);
     }
 }

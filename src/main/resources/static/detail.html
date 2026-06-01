@@ -116,6 +116,8 @@
     return res;
   }
 
+  let userTimezone = 'Asia/Seoul';
+
   const todoId = new URLSearchParams(location.search).get('id');
   let currentTodo = null;
   let categories = [];
@@ -127,6 +129,7 @@
     if (!meRes) return;
     if (!meRes.ok) { location.href = '/login.html'; return; }
     const me = await meRes.json();
+    userTimezone = me.data.timezone || 'Asia/Seoul';
     document.getElementById('usernameLabel').textContent = me.data.username + '님';
 
     if (!todoId) { location.href = '/index.html'; return; }
@@ -269,7 +272,14 @@
   function fmtDate(iso) {
     if (!iso) return '';
     const d = new Date(iso);
-    return d.toLocaleString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    const main = d.toLocaleString('ko-KR', {
+      timeZone: userTimezone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+    const tzAbbr = new Intl.DateTimeFormat('en', { timeZone: userTimezone, timeZoneName: 'short' })
+      .formatToParts(d).find(p => p.type === 'timeZoneName')?.value ?? '';
+    return tzAbbr ? `${main} (${tzAbbr})` : main;
   }
 
   function showAlert(el, type, msg) {

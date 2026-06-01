@@ -8,21 +8,19 @@ import java.util.Comparator;
 import java.util.List;
 
 @Data
-public class TodoResponse {
+public class TodoSummaryResponse {
     private Long id;
     private String title;
-    private String body;
     private boolean completed;
     private List<CategoryResponse> categories;
     private Instant createdAt;
     private Instant updatedAt;
     private Instant completedAt;
 
-    public static TodoResponse from(Todo todo) {
-        TodoResponse r = new TodoResponse();
+    public static TodoSummaryResponse from(Todo todo) {
+        TodoSummaryResponse r = new TodoSummaryResponse();
         r.setId(todo.getId());
         r.setTitle(todo.getTitle());
-        r.setBody(todo.getBody());
         r.setCompleted(todo.isCompleted());
         r.setCreatedAt(todo.getCreatedAt());
         r.setUpdatedAt(todo.getUpdatedAt());

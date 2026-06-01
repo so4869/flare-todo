@@ -12,6 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
+# Java 21 (Amazon Corretto) 경로 지정 필요
+export JAVA_HOME=/Volumes/d/-default_library/amazon-corretto-21.jdk/Contents/Home
+
 # Build
 ./gradlew build
 

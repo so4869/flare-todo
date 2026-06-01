@@ -1,6 +1,7 @@
 package im.flare.todo.controller;
 
 import im.flare.todo.dto.ApiResponse;
+import im.flare.todo.dto.CategoryOrderRequest;
 import im.flare.todo.dto.CategoryRequest;
 import im.flare.todo.dto.CategoryResponse;
 import im.flare.todo.entity.User;
@@ -39,6 +40,14 @@ public class CategoryController {
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
+    }
+
+    @PutMapping("/order")
+    public ResponseEntity<ApiResponse<Void>> updateOrder(
+            @RequestBody CategoryOrderRequest request, Authentication auth) {
+        User user = userService.findByUsername(auth.getName());
+        categoryService.updateOrder(request, user);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @DeleteMapping("/{id}")

@@ -13,8 +13,9 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -34,6 +35,8 @@ public class TodoService {
                                String sortBy, String sortDir) {
 
         Specification<Todo> spec = TodoSpec.ofUser(user);
+        String tz = user.getTimezone();
+        ZoneId zone = (tz != null && !tz.isBlank()) ? ZoneId.of(tz) : ZoneId.of("Asia/Seoul");
 
         if (categoryIds != null && !categoryIds.isEmpty()) {
             List<Category> cats = categoryIds.stream()
@@ -46,10 +49,10 @@ public class TodoService {
         if ("completed".equals(filter)) spec = spec.and(TodoSpec.isCompleted(true));
         else if ("active".equals(filter)) spec = spec.and(TodoSpec.isCompleted(false));
 
-        if (createdFrom   != null) spec = spec.and(TodoSpec.createdFrom(createdFrom));
-        if (createdTo     != null) spec = spec.and(TodoSpec.createdTo(createdTo));
-        if (completedFrom != null) spec = spec.and(TodoSpec.completedFrom(completedFrom));
-        if (completedTo   != null) spec = spec.and(TodoSpec.completedTo(completedTo));
+        if (createdFrom   != null) spec = spec.and(TodoSpec.createdFrom(createdFrom, zone));
+        if (createdTo     != null) spec = spec.and(TodoSpec.createdTo(createdTo, zone));
+        if (completedFrom != null) spec = spec.and(TodoSpec.completedFrom(completedFrom, zone));
+        if (completedTo   != null) spec = spec.and(TodoSpec.completedTo(completedTo, zone));
 
         return todoRepository.findAll(spec, buildSort(sortBy, sortDir));
     }
@@ -66,7 +69,7 @@ public class TodoService {
                 .title(request.getTitle())
                 .body(request.getBody())
                 .completed(completed)
-                .completedAt(completed ? LocalDateTime.now() : null)
+                .completedAt(completed ? Instant.now() : null)
                 .user(user)
                 .categories(resolveCategories(request.getCategoryIds(), user))
                 .build();
@@ -83,7 +86,7 @@ public class TodoService {
         todo.getCategories().addAll(resolveCategories(request.getCategoryIds(), user));
         if (request.getCompleted() != null) {
             if (request.getCompleted() && !todo.isCompleted()) {
-                todo.setCompletedAt(LocalDateTime.now());
+                todo.setCompletedAt(Instant.now());
             } else if (!request.getCompleted()) {
                 todo.setCompletedAt(null);
             }
@@ -105,14 +108,13 @@ public class TodoService {
                 .orElseThrow(() -> new IllegalArgumentException("Todo를 찾을 수 없습니다."));
         boolean nowCompleted = !todo.isCompleted();
         todo.setCompleted(nowCompleted);
-        todo.setCompletedAt(nowCompleted ? LocalDateTime.now() : null);
+        todo.setCompletedAt(nowCompleted ? Instant.now() : null);
         return todoRepository.save(todo);
     }
 
     private Sort buildSort(String sortBy, String sortDir) {
         Sort.Direction dir = "asc".equalsIgnoreCase(sortDir) ? Sort.Direction.ASC : Sort.Direction.DESC;
         if ("completedAt".equals(sortBy)) {
-            // completedAt이 null인 항목(미완료)은 항상 마지막
             return Sort.by(new Sort.Order(dir, "completedAt").nullsLast());
         }
         return Sort.by(dir, "createdAt");

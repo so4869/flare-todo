@@ -13,6 +13,8 @@ spring:
     properties:
       hibernate:
         show_sql: false
+        jdbc:
+          time_zone: UTC
   datasource:
     url: URL
     username: USERNAME

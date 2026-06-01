@@ -3,6 +3,7 @@ package im.flare.todo.controller;
 import im.flare.todo.dto.ApiResponse;
 import im.flare.todo.dto.TodoRequest;
 import im.flare.todo.dto.TodoResponse;
+import im.flare.todo.dto.TodoSummaryResponse;
 import im.flare.todo.entity.User;
 import im.flare.todo.service.TodoService;
 import im.flare.todo.service.UserService;
@@ -25,7 +26,7 @@ public class TodoController {
     private final UserService userService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<TodoResponse>>> getAll(
+    public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getAll(
             Authentication auth,
             @RequestParam(defaultValue = "all") String filter,
             @RequestParam(required = false) List<Long> categoryIds,
@@ -37,9 +38,9 @@ public class TodoController {
             @RequestParam(defaultValue = "desc") String sortDir
     ) {
         User user = userService.findByUsername(auth.getName());
-        List<TodoResponse> list = todoService.getTodos(user, filter, categoryIds,
+        List<TodoSummaryResponse> list = todoService.getTodos(user, filter, categoryIds,
                         createdFrom, createdTo, completedFrom, completedTo, sortBy, sortDir)
-                .stream().map(TodoResponse::from).toList();
+                .stream().map(TodoSummaryResponse::from).toList();
         return ResponseEntity.ok(ApiResponse.success(list));
     }
 
