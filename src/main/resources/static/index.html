@@ -23,6 +23,8 @@
     .drag-handle:active { cursor: grabbing; }
     .category-item.drag-over { background: #cfe2ff !important; border: 1px dashed #0d6efd; }
     .category-item.dragging { opacity: .4; }
+    .body-content { min-height: 60px; border: 1px solid #dee2e6; border-radius: 8px; padding: 16px; background: #fff; }
+    .body-content img { max-width: 100%; }
     #sidebarToggle { display: none; }
     @media (max-width: 768px) {
       #sidebarToggle { display: inline-block; }
@@ -178,6 +180,74 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
         <button class="btn btn-primary" id="saveTodoBtn" onclick="saveTodo()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal fade" id="detailModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title text-truncate pe-3" id="detailModalTitle">할 일 상세</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="detailLoading" class="text-center py-4 text-muted">불러오는 중...</div>
+
+        <!-- View mode -->
+        <div id="detailViewMode" class="d-none">
+          <h4 id="detailViewTitle" class="mb-3"></h4>
+          <div class="d-flex flex-wrap gap-2 mb-3" id="detailViewBadges"></div>
+          <div class="text-muted small mb-3">
+            <i class="bi bi-clock me-1"></i>등록: <span id="detailViewCreatedAt"></span>
+            &nbsp;|&nbsp;
+            <i class="bi bi-pencil-square me-1"></i>수정: <span id="detailViewUpdatedAt"></span>
+            <span id="detailViewCompletedAtArea">&nbsp;|&nbsp;<i class="bi bi-check-circle me-1 text-success"></i>완료: <span id="detailViewCompletedAt"></span></span>
+          </div>
+          <hr>
+          <div class="body-content" id="detailViewBody"></div>
+        </div>
+
+        <!-- Edit mode -->
+        <div id="detailEditMode" class="d-none">
+          <div id="detailEditAlertBox" class="alert d-none"></div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">제목 <span class="text-danger">*</span></label>
+            <input type="text" id="detailEditTitle" class="form-control" maxlength="200">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">카테고리 <small class="text-muted fw-normal">(복수 선택 가능)</small></label>
+            <div class="border rounded p-2" style="max-height:120px;overflow-y:auto" id="detailEditCategoryCheckboxes">
+              <span class="text-muted small">카테고리가 없습니다.</span>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">본문</label>
+            <textarea id="detailEditBody"></textarea>
+          </div>
+          <div class="form-check">
+            <input type="checkbox" class="form-check-input" id="detailEditCompleted">
+            <label class="form-check-label" for="detailEditCompleted">완료 처리</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer" id="detailViewFooter">
+        <button class="btn btn-outline-danger btn-sm me-auto" onclick="deleteDetailTodo()">
+          <i class="bi bi-trash me-1"></i>삭제
+        </button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button class="btn btn-outline-primary" onclick="enterDetailEditMode()">
+          <i class="bi bi-pencil me-1"></i>수정
+        </button>
+      </div>
+      <div class="modal-footer d-none" id="detailEditFooter">
+        <button class="btn btn-outline-secondary" onclick="exitDetailEditMode()">취소</button>
+        <button class="btn btn-primary" onclick="saveDetailEdit()">
+          <i class="bi bi-check-lg me-1"></i>저장
+        </button>
       </div>
     </div>
   </div>
@@ -533,9 +603,9 @@
           <input type="checkbox" class="todo-checkbox form-check-input mt-1" ${t.completed ? 'checked' : ''}
             onchange="toggleTodo(${t.id})" title="완료 토글">
           <div class="flex-grow-1 min-width-0">
-            <a href="/detail.html?id=${t.id}" class="todo-title ${t.completed ? 'completed-text' : ''}">
+            <span class="todo-title ${t.completed ? 'completed-text' : ''}" onclick="openDetailModal(${t.id})">
               ${escHtml(t.title)}
-            </a>
+            </span>
             <div class="d-flex flex-wrap gap-2 mt-1 align-items-center">
               ${(t.categories || []).map(c => `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">
                 <i class="bi bi-tag me-1"></i>${escHtml(c.name)}</span>`).join('')}
@@ -649,6 +719,138 @@
       await loadTodos();
     } else {
       showAlert(box, 'danger', data.message);
+    }
+  }
+
+  // ── Detail Modal ───────────────────────────────────────────
+  let detailTodoId = null;
+  let detailCurrentTodo = null;
+
+  const detailModal = document.getElementById('detailModal');
+
+  detailModal.addEventListener('hide.bs.modal', () => {
+    if (tinymce.get('detailEditBody')) tinymce.remove('#detailEditBody');
+  });
+
+  async function openDetailModal(id) {
+    detailTodoId = id;
+    detailCurrentTodo = null;
+    document.getElementById('detailLoading').classList.remove('d-none');
+    document.getElementById('detailViewMode').classList.add('d-none');
+    document.getElementById('detailEditMode').classList.add('d-none');
+    document.getElementById('detailViewFooter').classList.remove('d-none');
+    document.getElementById('detailEditFooter').classList.add('d-none');
+    document.getElementById('detailModalTitle').textContent = '할 일 상세';
+    new bootstrap.Modal(detailModal).show();
+
+    const res = await authFetch(`/api/todos/${id}`);
+    if (!res) return;
+    const data = await res.json();
+    if (!data.success) return;
+    detailCurrentTodo = data.data;
+    document.getElementById('detailLoading').classList.add('d-none');
+    renderDetailView();
+    document.getElementById('detailViewMode').classList.remove('d-none');
+  }
+
+  function renderDetailView() {
+    const t = detailCurrentTodo;
+    document.getElementById('detailModalTitle').textContent = t.title;
+    document.getElementById('detailViewTitle').textContent = t.title;
+    document.getElementById('detailViewBody').innerHTML = t.body || '<span class="text-muted">본문 없음</span>';
+    document.getElementById('detailViewCreatedAt').textContent = fmtDate(t.createdAt);
+    document.getElementById('detailViewUpdatedAt').textContent = fmtDate(t.updatedAt);
+    const completedArea = document.getElementById('detailViewCompletedAtArea');
+    if (t.completedAt) {
+      document.getElementById('detailViewCompletedAt').textContent = fmtDate(t.completedAt);
+      completedArea.style.display = '';
+    } else {
+      completedArea.style.display = 'none';
+    }
+    const badges = document.getElementById('detailViewBadges');
+    badges.innerHTML = (t.categories || []).map(c =>
+      `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+        <i class="bi bi-tag me-1"></i>${escHtml(c.name)}</span>`).join('');
+    badges.innerHTML += t.completed
+      ? '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>완료</span>'
+      : '<span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-circle me-1"></i>미완료</span>';
+  }
+
+  function enterDetailEditMode() {
+    const t = detailCurrentTodo;
+    document.getElementById('detailEditTitle').value = t.title;
+    document.getElementById('detailEditCompleted').checked = t.completed;
+    document.getElementById('detailEditAlertBox').className = 'alert d-none';
+    const selectedIds = (t.categories || []).map(c => c.id);
+    const container = document.getElementById('detailEditCategoryCheckboxes');
+    if (!categories.length) {
+      container.innerHTML = '<span class="text-muted small">카테고리가 없습니다.</span>';
+    } else {
+      container.innerHTML = categories.map(c => `
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" value="${c.id}" id="deCatChk_${c.id}"
+                 ${selectedIds.includes(c.id) ? 'checked' : ''}>
+          <label class="form-check-label small" for="deCatChk_${c.id}">${escHtml(c.name)}</label>
+        </div>`).join('');
+    }
+    document.getElementById('detailViewMode').classList.add('d-none');
+    document.getElementById('detailEditMode').classList.remove('d-none');
+    document.getElementById('detailViewFooter').classList.add('d-none');
+    document.getElementById('detailEditFooter').classList.remove('d-none');
+    tinymce.init({
+      selector: '#detailEditBody',
+      base_url: '/tinymce',
+      suffix: '.min',
+      height: 320,
+      plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
+      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link | removeformat | code',
+      menubar: false,
+      branding: false,
+      setup(editor) {
+        editor.on('init', () => editor.setContent(t.body || ''));
+      }
+    });
+  }
+
+  function exitDetailEditMode() {
+    if (tinymce.get('detailEditBody')) tinymce.remove('#detailEditBody');
+    document.getElementById('detailEditMode').classList.add('d-none');
+    document.getElementById('detailViewMode').classList.remove('d-none');
+    document.getElementById('detailEditFooter').classList.add('d-none');
+    document.getElementById('detailViewFooter').classList.remove('d-none');
+  }
+
+  async function saveDetailEdit() {
+    const box = document.getElementById('detailEditAlertBox');
+    const title = document.getElementById('detailEditTitle').value.trim();
+    if (!title) { showAlert(box, 'danger', '제목을 입력하세요.'); return; }
+    const editor = tinymce.get('detailEditBody');
+    const body = editor ? editor.getContent() : '';
+    const categoryIds = Array.from(document.querySelectorAll('#detailEditCategoryCheckboxes input:checked'))
+      .map(cb => Number(cb.value));
+    const completed = document.getElementById('detailEditCompleted').checked;
+    const res = await authFetch(`/api/todos/${detailTodoId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title, body, categoryIds, completed })
+    });
+    const data = await res.json();
+    if (data.success) {
+      detailCurrentTodo = data.data;
+      exitDetailEditMode();
+      renderDetailView();
+      await loadTodos();
+    } else {
+      showAlert(box, 'danger', data.message);
+    }
+  }
+
+  async function deleteDetailTodo() {
+    if (!confirm('정말 삭제하시겠습니까?')) return;
+    const res = await authFetch(`/api/todos/${detailTodoId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      bootstrap.Modal.getInstance(detailModal).hide();
+      await loadTodos();
     }
   }
 
