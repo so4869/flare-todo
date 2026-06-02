@@ -4,11 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Flare Todo</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap-icons/bootstrap-icons.min.css" rel="stylesheet">
   <style>
     body { background: #f8f9fa; }
-    .sidebar { min-height: calc(100vh - 56px); background: #fff; border-right: 1px solid #dee2e6; }
+
+    /* ── 전체 레이아웃 ─────────────────────────────────────── */
+    .app-wrapper {
+      display: flex;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ── 반응형 팝업 ──────────────────────────────────────── */
+    @media (min-width: 992px) {
+      .modal-responsive { max-width: clamp(700px, 65vw, 1600px); }
+    }
+
+    /* ── 사이드바 (고정폭, 화면 크기별 확장) ─────────────── */
+    .sidebar {
+      width: 220px;
+      flex-shrink: 0;
+      background: #fff;
+      border-right: 1px solid #dee2e6;
+    }
+    @media (min-width: 1400px) { .sidebar { width: 260px; } }
+    @media (min-width: 1920px) { .sidebar { width: 300px; } }
+    @media (min-width: 2560px) { .sidebar { width: 340px; } }
+
+    /* ── 메인 콘텐츠 ──────────────────────────────────────── */
+    .main-content { flex: 1; min-width: 0; }
+
+    /* ── 공통 컴포넌트 ────────────────────────────────────── */
     .category-item { cursor: pointer; border-radius: 6px; padding: 6px 10px; margin-bottom: 2px; transition: background .15s; }
     .category-item:hover { background: #f0f2f5; }
     .category-item.active { background: #e7f1ff; color: #0d6efd; font-weight: 500; }
@@ -25,9 +51,12 @@
     .category-item.dragging { opacity: .4; }
     .body-content { min-height: 60px; border: 1px solid #dee2e6; border-radius: 8px; padding: 16px; background: #fff; }
     .body-content img { max-width: 100%; }
+
+    /* ── 모바일 ───────────────────────────────────────────── */
     #sidebarToggle { display: none; }
     @media (max-width: 768px) {
       #sidebarToggle { display: inline-block; }
+      .app-wrapper { display: block; }
       .sidebar { position: fixed; z-index: 1000; height: 100vh; top: 0; left: -100%; transition: left .25s; width: 260px !important; }
       .sidebar.show { left: 0; }
     }
@@ -52,11 +81,10 @@
   </div>
 </nav>
 
-<div class="container-fluid p-0">
-  <div class="row g-0">
+<div class="app-wrapper">
 
-    <!-- Sidebar -->
-    <div class="col-12 col-md-2 sidebar p-3" id="sidebar">
+  <!-- Sidebar -->
+  <div class="sidebar p-3" id="sidebar">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <span class="fw-semibold text-muted small">카테고리</span>
         <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#categoryModal">
@@ -69,8 +97,8 @@
       <div id="categoryList"></div>
     </div>
 
-    <!-- Main content -->
-    <div class="col-12 col-md-10 p-4">
+  <!-- Main content -->
+  <div class="main-content p-4">
       <!-- Filter tabs + Sort + Add button -->
       <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -124,8 +152,8 @@
 
       <!-- Todo list -->
       <div id="todoList"></div>
-    </div>
   </div>
+
 </div>
 
 <!-- Category Add Modal -->
@@ -150,7 +178,7 @@
 
 <!-- Todo Add/Edit Modal -->
 <div class="modal fade" id="todoModal" tabindex="-1" data-bs-backdrop="static">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+  <div class="modal-dialog modal-responsive modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title" id="todoModalTitle">새 할 일</h5>
@@ -164,7 +192,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label fw-semibold">카테고리 <small class="text-muted fw-normal">(복수 선택 가능)</small></label>
-          <div class="border rounded p-2" style="max-height:120px;overflow-y:auto" id="categoryCheckboxes">
+          <div class="d-flex flex-wrap gap-2" id="categoryCheckboxes">
             <span class="text-muted small">카테고리가 없습니다.</span>
           </div>
         </div>
@@ -187,7 +215,7 @@
 
 <!-- Detail Modal -->
 <div class="modal fade" id="detailModal" tabindex="-1" data-bs-backdrop="static">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog modal-responsive modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title text-truncate pe-3" id="detailModalTitle">할 일 상세</h5>
@@ -219,7 +247,7 @@
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">카테고리 <small class="text-muted fw-normal">(복수 선택 가능)</small></label>
-            <div class="border rounded p-2" style="max-height:120px;overflow-y:auto" id="detailEditCategoryCheckboxes">
+            <div class="d-flex flex-wrap gap-2" id="detailEditCategoryCheckboxes">
               <span class="text-muted small">카테고리가 없습니다.</span>
             </div>
           </div>
@@ -291,7 +319,17 @@
 <!-- Sidebar overlay (mobile) -->
 <div id="sidebarOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:999;" onclick="toggleSidebar()"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Auto-save Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+  <div id="autoSaveToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body small"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="/tinymce/tinymce.min.js"></script>
 <script>
   async function authFetch(url, options = {}) {
@@ -312,6 +350,7 @@
   let currentFilter = 'all';
   let selectedCategoryIds = [];
   let editingTodoId = null;
+  let autoSaveTimer = null;
   let pendingEditorContent = '';
   let categories = [];
   let dateFilters = { createdFrom: '', createdTo: '', completedFrom: '', completedTo: '' };
@@ -495,7 +534,7 @@
       return;
     }
     container.innerHTML = categories.map(c => `
-      <div class="form-check">
+      <div class="form-check form-check-inline mb-0">
         <input class="form-check-input" type="checkbox" value="${c.id}" id="catChk_${c.id}"
                ${selectedIds.includes(c.id) ? 'checked' : ''}>
         <label class="form-check-label small" for="catChk_${c.id}">${escHtml(c.name)}</label>
@@ -631,7 +670,10 @@
   async function toggleTodo(id) {
     const res = await authFetch(`/api/todos/${id}/toggle`, { method: 'PATCH' });
     const data = await res.json();
-    if (data.success) await loadTodos();
+    if (data.success) {
+      showToast(data.data?.completed ? '완료 처리됨' : '미완료로 변경됨');
+      await loadTodos();
+    }
   }
 
   async function deleteTodo(id) {
@@ -645,27 +687,16 @@
   const todoModal = document.getElementById('todoModal');
 
   todoModal.addEventListener('shown.bs.modal', () => {
-    tinymce.init({
-      selector: '#todoBody',
-      base_url: '/tinymce',
-      suffix: '.min',
-      height: 320,
-      plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
-      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link | removeformat | code',
-      menubar: false,
-      branding: false,
-      setup(editor) {
-        editor.on('init', () => {
-          if (pendingEditorContent !== undefined) {
-            editor.setContent(pendingEditorContent);
-          }
-        });
-      }
-    });
+    if (editingTodoId) startAutoSave(autoSaveTodoModal);
+    const ed = tinymce.get('todoBody');
+    if (ed) {
+      ed.setContent(pendingEditorContent || '');
+      ed.getWin().dispatchEvent(new Event('resize'));
+    }
   });
 
   todoModal.addEventListener('hide.bs.modal', () => {
-    if (tinymce.get('todoBody')) tinymce.remove('#todoBody');
+    stopAutoSave();
   });
 
   function openTodoModal() {
@@ -715,6 +746,7 @@
     });
     const data = await res.json();
     if (data.success) {
+      showToast(editingTodoId ? '저장됨' : '추가됨');
       bootstrap.Modal.getInstance(todoModal).hide();
       await loadTodos();
     } else {
@@ -729,6 +761,7 @@
   const detailModal = document.getElementById('detailModal');
 
   detailModal.addEventListener('hide.bs.modal', () => {
+    stopAutoSave();
     if (tinymce.get('detailEditBody')) tinymce.remove('#detailEditBody');
   });
 
@@ -787,7 +820,7 @@
       container.innerHTML = '<span class="text-muted small">카테고리가 없습니다.</span>';
     } else {
       container.innerHTML = categories.map(c => `
-        <div class="form-check">
+        <div class="form-check form-check-inline mb-0">
           <input class="form-check-input" type="checkbox" value="${c.id}" id="deCatChk_${c.id}"
                  ${selectedIds.includes(c.id) ? 'checked' : ''}>
           <label class="form-check-label small" for="deCatChk_${c.id}">${escHtml(c.name)}</label>
@@ -797,6 +830,7 @@
     document.getElementById('detailEditMode').classList.remove('d-none');
     document.getElementById('detailViewFooter').classList.add('d-none');
     document.getElementById('detailEditFooter').classList.remove('d-none');
+    startAutoSave(autoSaveDetailEdit);
     tinymce.init({
       selector: '#detailEditBody',
       base_url: '/tinymce',
@@ -813,6 +847,7 @@
   }
 
   function exitDetailEditMode() {
+    stopAutoSave();
     if (tinymce.get('detailEditBody')) tinymce.remove('#detailEditBody');
     document.getElementById('detailEditMode').classList.add('d-none');
     document.getElementById('detailViewMode').classList.remove('d-none');
@@ -838,6 +873,7 @@
       detailCurrentTodo = data.data;
       exitDetailEditMode();
       renderDetailView();
+      showToast('저장됨');
       await loadTodos();
     } else {
       showAlert(box, 'danger', data.message);
@@ -851,6 +887,61 @@
     if (data.success) {
       bootstrap.Modal.getInstance(detailModal).hide();
       await loadTodos();
+    }
+  }
+
+  // ── Auto-save ──────────────────────────────────────────────
+  function startAutoSave(saveFn) {
+    stopAutoSave();
+    autoSaveTimer = setInterval(saveFn, 60000);
+  }
+
+  function stopAutoSave() {
+    clearInterval(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+
+  function showToast(msg, delay = 2500) {
+    const now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    const el = document.getElementById('autoSaveToast');
+    el.querySelector('.toast-body').innerHTML = `<i class="bi bi-check-circle me-1"></i> ${msg} ${now}`;
+    bootstrap.Toast.getOrCreateInstance(el, { delay }).show();
+  }
+
+  function showAutoSaveToast() { showToast('자동 저장됨'); }
+
+  async function autoSaveTodoModal() {
+    if (!editingTodoId) return;
+    const title = document.getElementById('todoTitle').value.trim();
+    if (!title) return;
+    const editor = tinymce.get('todoBody');
+    const body = editor ? editor.getContent() : '';
+    const categoryIds = getSelectedCategoryIds();
+    const completed = document.getElementById('todoCompleted').checked;
+    const res = await authFetch(`/api/todos/${editingTodoId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title, body, categoryIds, completed })
+    });
+    if (res && res.ok) showAutoSaveToast();
+  }
+
+  async function autoSaveDetailEdit() {
+    if (!detailTodoId) return;
+    const title = document.getElementById('detailEditTitle').value.trim();
+    if (!title) return;
+    const editor = tinymce.get('detailEditBody');
+    const body = editor ? editor.getContent() : '';
+    const categoryIds = Array.from(document.querySelectorAll('#detailEditCategoryCheckboxes input:checked'))
+      .map(cb => Number(cb.value));
+    const completed = document.getElementById('detailEditCompleted').checked;
+    const res = await authFetch(`/api/todos/${detailTodoId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ title, body, categoryIds, completed })
+    });
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data.success) detailCurrentTodo = data.data;
+      showAutoSaveToast();
     }
   }
 
@@ -905,6 +996,18 @@
     const open = sb.classList.toggle('show');
     ov.style.display = open ? 'block' : 'none';
   }
+
+  // TinyMCE 페이지 로드 시 사전 초기화
+  tinymce.init({
+    selector: '#todoBody',
+    base_url: '/tinymce',
+    suffix: '.min',
+    height: 320,
+    plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
+    toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link | removeformat | code',
+    menubar: false,
+    branding: false
+  });
 
   // Enter key in category modal
   document.getElementById('categoryName').addEventListener('keydown', e => {
