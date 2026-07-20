@@ -13,6 +13,6 @@ import java.util.Optional;
 public interface TodoRepository extends JpaRepository<Todo, Long>, JpaSpecificationExecutor<Todo> {
     Optional<Todo> findByIdAndUser(Long id, User user);
 
-    @Query("select c.id, count(t) from Todo t join t.categories c where t.user = :user group by c.id")
+    @Query("select c.id, count(t) from Todo t join t.categories c where t.user = :user and t.completed = false group by c.id")
     List<Object[]> countTodosPerCategory(@Param("user") User user);
 }

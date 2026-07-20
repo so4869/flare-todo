@@ -679,6 +679,7 @@
     if (data.success) {
       showToast(data.data?.completed ? '완료 처리됨' : '미완료로 변경됨');
       await loadTodos();
+      await loadCategories();
     }
   }
 
