@@ -5,20 +5,29 @@ import im.flare.todo.dto.CategoryRequest;
 import im.flare.todo.entity.Category;
 import im.flare.todo.entity.User;
 import im.flare.todo.repository.CategoryRepository;
+import im.flare.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CategoryService {
 
     private final CategoryRepository categoryRepository;
+    private final TodoRepository todoRepository;
 
     public List<Category> getCategories(User user) {
         return categoryRepository.findByUserOrderBySortOrderAscIdAsc(user);
+    }
+
+    public Map<Long, Long> getTodoCountByCategory(User user) {
+        return todoRepository.countTodosPerCategory(user).stream()
+                .collect(Collectors.toMap(row -> (Long) row[0], row -> (Long) row[1]));
     }
 
     @Transactional

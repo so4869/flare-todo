@@ -345,6 +345,12 @@
     return res;
   }
 
+  // Bootstrap 모달의 포커스 트랩이 body 끝에 붙는 TinyMCE 다이얼로그(소스코드 편집 등)의
+  // 포커스를 되빼앗아 입력이 불가능해지는 문제 방지. 모달의 focusin 핸들러보다 먼저 등록되어야 한다.
+  document.addEventListener('focusin', e => {
+    if (e.target.closest('.tox-tinymce, .tox-tinymce-aux, .tox-dialog')) e.stopImmediatePropagation();
+  });
+
   let userTimezone = 'Asia/Seoul';
 
   let currentFilter = 'all';
@@ -443,7 +449,7 @@
                  ${selectedCategoryIds.includes(c.id) ? 'checked' : ''}
                  onclick="event.stopPropagation(); toggleCategory(${c.id})">
           <label class="mb-0" for="catFilter_${c.id}">
-            <i class="bi bi-tag me-1"></i>${escHtml(c.name)}
+            <i class="bi bi-tag me-1"></i>${escHtml(c.name)} <span class="text-muted small">(${c.todoCount ?? 0})</span>
           </label>
         </div>
         <button class="btn btn-sm btn-link text-danger p-0 ms-1" onclick="deleteCategory(event,${c.id})">
@@ -680,7 +686,10 @@
     if (!confirm('정말 삭제하시겠습니까?')) return;
     const res = await authFetch(`/api/todos/${id}`, { method: 'DELETE' });
     const data = await res.json();
-    if (data.success) await loadTodos();
+    if (data.success) {
+      await loadTodos();
+      await loadCategories();
+    }
   }
 
   // ── Todo Modal ─────────────────────────────────────────────
@@ -697,6 +706,15 @@
 
   todoModal.addEventListener('hide.bs.modal', () => {
     stopAutoSave();
+  });
+
+  // 본문(TinyMCE iframe) 밖에서 Ctrl+Enter(Mac: Cmd+Enter) → 저장
+  // iframe 내부 키 입력은 바깥 문서로 버블링되지 않으므로 본문에서는 동작하지 않음
+  todoModal.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveTodo();
+    }
   });
 
   function openTodoModal() {
@@ -749,6 +767,7 @@
       showToast(editingTodoId ? '저장됨' : '추가됨');
       bootstrap.Modal.getInstance(todoModal).hide();
       await loadTodos();
+      await loadCategories();
     } else {
       showAlert(box, 'danger', data.message);
     }
@@ -763,6 +782,15 @@
   detailModal.addEventListener('hide.bs.modal', () => {
     stopAutoSave();
     if (tinymce.get('detailEditBody')) tinymce.remove('#detailEditBody');
+  });
+
+  // 수정 모드에서 본문 밖 Ctrl+Enter(Mac: Cmd+Enter) → 저장
+  detailModal.addEventListener('keydown', e => {
+    const editing = !document.getElementById('detailEditMode').classList.contains('d-none');
+    if (editing && (e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveDetailEdit();
+    }
   });
 
   async function openDetailModal(id) {
@@ -790,7 +818,7 @@
     const t = detailCurrentTodo;
     document.getElementById('detailModalTitle').textContent = t.title;
     document.getElementById('detailViewTitle').textContent = t.title;
-    document.getElementById('detailViewBody').innerHTML = t.body || '<span class="text-muted">본문 없음</span>';
+    renderDetailBody(t.body);
     document.getElementById('detailViewCreatedAt').textContent = fmtDate(t.createdAt);
     document.getElementById('detailViewUpdatedAt').textContent = fmtDate(t.updatedAt);
     const completedArea = document.getElementById('detailViewCompletedAtArea');
@@ -807,6 +835,25 @@
     badges.innerHTML += t.completed
       ? '<span class="badge bg-success-subtle text-success border border-success-subtle"><i class="bi bi-check-circle me-1"></i>완료</span>'
       : '<span class="badge bg-warning-subtle text-warning border border-warning-subtle"><i class="bi bi-circle me-1"></i>미완료</span>';
+  }
+
+  // 본문을 Shadow DOM에 렌더링해 페이지 CSS(Bootstrap)와 본문 스타일을 서로 격리하고,
+  // TinyMCE 편집 화면과 동일한 content CSS를 적용해 보기/수정 모드의 모양을 일치시킨다.
+  // (content.min.css의 body 셀렉터는 Shadow DOM에 없으므로 해당 규칙만 아래에서 직접 지정)
+  function renderDetailBody(body) {
+    const host = document.getElementById('detailViewBody');
+    const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `
+      <link rel="stylesheet" href="/tinymce/skins/content/default/content.min.css">
+      <style>
+        .mce-content-body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+                       Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+          line-height: 1.4;
+        }
+        .mce-content-body img { max-width: 100%; }
+      </style>
+      <div class="mce-content-body">${body || '<span style="color:#adb5bd">본문 없음</span>'}</div>`;
   }
 
   function enterDetailEditMode() {
@@ -837,7 +884,7 @@
       suffix: '.min',
       height: 320,
       plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
-      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link | removeformat | code',
+      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link table | removeformat | code',
       menubar: false,
       branding: false,
       setup(editor) {
@@ -875,6 +922,7 @@
       renderDetailView();
       showToast('저장됨');
       await loadTodos();
+      await loadCategories();
     } else {
       showAlert(box, 'danger', data.message);
     }
@@ -887,6 +935,7 @@
     if (data.success) {
       bootstrap.Modal.getInstance(detailModal).hide();
       await loadTodos();
+      await loadCategories();
     }
   }
 
@@ -922,7 +971,10 @@
       method: 'PUT',
       body: JSON.stringify({ title, body, categoryIds, completed })
     });
-    if (res && res.ok) showAutoSaveToast();
+    if (res && res.ok) {
+      showAutoSaveToast();
+      loadCategories();
+    }
   }
 
   async function autoSaveDetailEdit() {
@@ -942,6 +994,7 @@
       const data = await res.json();
       if (data.success) detailCurrentTodo = data.data;
       showAutoSaveToast();
+      loadCategories();
     }
   }
 
@@ -1004,7 +1057,7 @@
     suffix: '.min',
     height: 320,
     plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
-    toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link | removeformat | code',
+    toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link table | removeformat | code',
     menubar: false,
     branding: false
   });

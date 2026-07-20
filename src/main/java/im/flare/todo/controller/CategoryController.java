@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/categories")
@@ -25,8 +26,9 @@ public class CategoryController {
     @GetMapping
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getAll(Authentication auth) {
         User user = userService.findByUsername(auth.getName());
+        Map<Long, Long> counts = categoryService.getTodoCountByCategory(user);
         List<CategoryResponse> list = categoryService.getCategories(user)
-                .stream().map(CategoryResponse::from).toList();
+                .stream().map(c -> CategoryResponse.from(c, counts.getOrDefault(c.getId(), 0L))).toList();
         return ResponseEntity.ok(ApiResponse.success(list));
     }
 
