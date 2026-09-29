@@ -6,6 +6,10 @@ spring:
     name: flare-todo
   profiles:
     active: local
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 55MB
   jpa:
     hibernate:
       ddl-auto: update
@@ -25,3 +29,17 @@ jwt:
   secret: ${JWT_SECRET:flare-todo-default-secret-key-change-in-production}
   expiration: 86400000  # 24시간 (ms)
 
+
+# 첨부파일: S3 저장 + CloudFront(서명 쿠키)로 제공
+app:
+  attachment:
+    bucket: flare-todo-attach
+    region: ap-northeast-2
+    cdn-base-url: ${CDN_BASE_URL:https://todo-att.flare.im}
+    key-pair-id: K1RXDCTB6J2Z4D                 # CloudFront 공개키 ID (flare-todo-att-key-1)
+    private-key-path: ${CDN_PRIVATE_KEY_PATH:}   # CloudFront 서명용 개인키(PKCS#8 PEM). 비우면 서명 쿠키 미발급
+    cookie-domain: flare.im                     # todo.flare.im 과 todo-att.flare.im 이 공유하는 상위 도메인
+    cookie-secure: true
+    cookie-ttl: 12h
+    max-inline-image-size: 10MB
+    orphan-retention: 1d

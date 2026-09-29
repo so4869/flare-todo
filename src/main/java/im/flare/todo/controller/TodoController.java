@@ -1,10 +1,13 @@
 package im.flare.todo.controller;
 
 import im.flare.todo.dto.ApiResponse;
+import im.flare.todo.dto.AttachmentResponse;
 import im.flare.todo.dto.TodoRequest;
 import im.flare.todo.dto.TodoResponse;
 import im.flare.todo.dto.TodoSummaryResponse;
+import im.flare.todo.entity.Todo;
 import im.flare.todo.entity.User;
+import im.flare.todo.service.AttachmentService;
 import im.flare.todo.service.TodoService;
 import im.flare.todo.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +27,13 @@ public class TodoController {
 
     private final TodoService todoService;
     private final UserService userService;
+    private final AttachmentService attachmentService;
+
+    private TodoResponse toResponse(Todo todo) {
+        return TodoResponse.from(todo, attachmentService.getTodoFiles(todo).stream()
+                .map(a -> AttachmentResponse.from(a, attachmentService.urlOf(a)))
+                .toList());
+    }
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<TodoSummaryResponse>>> getAll(
@@ -48,7 +58,7 @@ public class TodoController {
     public ResponseEntity<ApiResponse<TodoResponse>> get(@PathVariable Long id, Authentication auth) {
         try {
             User user = userService.findByUsername(auth.getName());
-            return ResponseEntity.ok(ApiResponse.success(TodoResponse.from(todoService.getTodo(id, user))));
+            return ResponseEntity.ok(ApiResponse.success(toResponse(todoService.getTodo(id, user))));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(404).body(ApiResponse.error(e.getMessage()));
         }
@@ -59,7 +69,7 @@ public class TodoController {
             @RequestBody TodoRequest request, Authentication auth) {
         try {
             User user = userService.findByUsername(auth.getName());
-            return ResponseEntity.ok(ApiResponse.success(TodoResponse.from(todoService.createTodo(request, user))));
+            return ResponseEntity.ok(ApiResponse.success(toResponse(todoService.createTodo(request, user))));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
@@ -70,7 +80,7 @@ public class TodoController {
             @PathVariable Long id, @RequestBody TodoRequest request, Authentication auth) {
         try {
             User user = userService.findByUsername(auth.getName());
-            return ResponseEntity.ok(ApiResponse.success(TodoResponse.from(todoService.updateTodo(id, request, user))));
+            return ResponseEntity.ok(ApiResponse.success(toResponse(todoService.updateTodo(id, request, user))));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
@@ -91,7 +101,7 @@ public class TodoController {
     public ResponseEntity<ApiResponse<TodoResponse>> toggle(@PathVariable Long id, Authentication auth) {
         try {
             User user = userService.findByUsername(auth.getName());
-            return ResponseEntity.ok(ApiResponse.success(TodoResponse.from(todoService.toggleComplete(id, user))));
+            return ResponseEntity.ok(ApiResponse.success(toResponse(todoService.toggleComplete(id, user))));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.status(404).body(ApiResponse.error(e.getMessage()));
         }

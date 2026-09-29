@@ -1,0 +1,31 @@
+/* ── 첨부파일 (js/attachments.js) ─────────────────────────── */
+.attach-drop {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .7rem 1rem;
+  border: 1.5px dashed #ced4da; border-radius: 8px;
+  background: #fafbfc; color: #6c757d; font-size: .875rem;
+  cursor: pointer; transition: border-color .15s, background .15s;
+}
+.attach-drop > .bi { font-size: 1.25rem; }
+.attach-drop:hover, .attach-drop:focus-visible { border-color: #86b7fe; background: #f5f9ff; outline: none; }
+.attach-drop.attach-dragover { border-color: #0d6efd; background: #e7f1ff; color: #0d6efd; }
+.attach-pick { color: #0d6efd; text-decoration: underline; }
+
+.attach-list { list-style: none; margin: 0; padding: 0; }
+.attach-box .attach-list:not(:empty) { margin-top: .5rem; }
+.attach-item {
+  position: relative;
+  display: flex; align-items: center; gap: .5rem;
+  padding: .45rem .75rem;
+  border: 1px solid #e9ecef; border-radius: 6px; background: #fff;
+  font-size: .875rem;
+}
+.attach-item + .attach-item { margin-top: .35rem; }
+.attach-icon { color: #6c757d; font-size: 1.1rem; flex-shrink: 0; }
+.attach-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #212529; }
+a.attach-name { text-decoration: none; }
+a.attach-name:hover { color: #0d6efd; text-decoration: underline; }
+.attach-size { color: #adb5bd; font-size: .8rem; flex-shrink: 0; }
+.attach-remove { font-size: .6rem; flex-shrink: 0; }
+.attach-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #e9ecef; border-radius: 0 0 6px 6px; overflow: hidden; }
+.attach-progress > div { height: 100%; background: #0d6efd; transition: width .2s; }

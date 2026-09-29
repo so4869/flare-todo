@@ -15,4 +15,7 @@ public interface TodoRepository extends JpaRepository<Todo, Long>, JpaSpecificat
 
     @Query("select c.id, count(t) from Todo t join t.categories c where t.user = :user and t.completed = false group by c.id")
     List<Object[]> countTodosPerCategory(@Param("user") User user);
+
+    // 본문 이미지가 아직 어떤 할 일 본문에서 참조되는지 확인 (첨부 정리 배치용)
+    boolean existsByUserAndBodyContaining(User user, String text);
 }

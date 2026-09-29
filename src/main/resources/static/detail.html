@@ -6,9 +6,16 @@
   <title>할 일 상세 - Flare Todo</title>
   <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   <link href="/vendor/bootstrap-icons/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/css/attachments.css" rel="stylesheet">
   <style>
     body { background: #f8f9fa; }
-    .detail-card { max-width: 860px; margin: 30px auto; }
+    .detail-card { max-width: 53.75rem; margin: clamp(30px, 6vh, 6rem) auto; }
+    /* 고해상도(2K/4K): OS 배율 없이 쓰는 큰 화면에서 rem 기준 크기를 키워 UI 전체를 비례 확대 */
+    @media (min-width: 2400px) and (min-height: 1300px) { html { font-size: 18px; } }
+    @media (min-width: 3200px) and (min-height: 1800px) { html { font-size: 24px; } }
+    /* TinyMCE 툴바는 px 기반 스킨이라 같은 배율로 따로 확대 */
+    @media (min-width: 2400px) and (min-height: 1300px) { .tox .tox-editor-header { zoom: 1.125; } }
+    @media (min-width: 3200px) and (min-height: 1800px) { .tox .tox-editor-header { zoom: 1.5; } }
     .body-content { min-height: 120px; border: 1px solid #dee2e6; border-radius: 8px; padding: 16px; background: #fff; }
     .body-content img { max-width: 100%; }
   </style>
@@ -57,6 +64,10 @@
           </div>
           <hr>
           <div class="body-content" id="viewBody"></div>
+          <div id="viewAttachArea" class="mt-3 d-none">
+            <div class="small fw-semibold text-muted mb-2"><i class="bi bi-paperclip me-1"></i>첨부파일</div>
+            <ul class="attach-list" id="viewAttachList"></ul>
+          </div>
         </div>
       </div>
     </div>
@@ -89,6 +100,10 @@
             <label class="form-label fw-semibold">본문</label>
             <textarea id="editBody"></textarea>
           </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">첨부파일</label>
+            <div id="editAttach"></div>
+          </div>
           <div class="form-check">
             <input type="checkbox" class="form-check-input" id="editCompleted">
             <label class="form-check-label" for="editCompleted">완료 처리</label>
@@ -102,6 +117,7 @@
 
 <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="/tinymce/tinymce.min.js"></script>
+<script src="/js/attachments.js"></script>
 <script>
   async function authFetch(url, options = {}) {
     const token = localStorage.getItem('jwt_token');
@@ -121,6 +137,8 @@
   const todoId = new URLSearchParams(location.search).get('id');
   let currentTodo = null;
   let categories = [];
+  const editAttach = Attachments.createBox(document.getElementById('editAttach'),
+    { dropTarget: document.getElementById('editMode') });
 
   // ── Init ───────────────────────────────────────────────────
   (async () => {
@@ -131,6 +149,7 @@
     const me = await meRes.json();
     userTimezone = me.data.timezone || 'Asia/Seoul';
     document.getElementById('usernameLabel').textContent = me.data.username + '님';
+    Attachments.keepCdnSession();
 
     if (!todoId) { location.href = '/index.html'; return; }
 
@@ -162,6 +181,9 @@
     document.title = t.title + ' - Flare Todo';
     document.getElementById('viewTitle').textContent = t.title;
     document.getElementById('viewBody').innerHTML = t.body || '<span class="text-muted">본문 없음</span>';
+    const hasAttach = t.attachments && t.attachments.length > 0;
+    document.getElementById('viewAttachArea').classList.toggle('d-none', !hasAttach);
+    Attachments.renderList(document.getElementById('viewAttachList'), t.attachments);
     document.getElementById('viewCreatedAt').textContent = fmtDate(t.createdAt);
     document.getElementById('viewUpdatedAt').textContent = fmtDate(t.updatedAt);
     const completedArea = document.getElementById('viewCompletedAtArea');
@@ -187,6 +209,7 @@
     document.getElementById('editTitle').value = t.title;
     document.getElementById('editCompleted').checked = t.completed;
     document.getElementById('editAlertBox').className = 'alert d-none';
+    editAttach.set(t.attachments);
 
     const selectedIds = (t.categories || []).map(c => c.id);
     const container = document.getElementById('editCategoryCheckboxes');
@@ -209,15 +232,40 @@
       base_url: '/tinymce',
       suffix: '.min',
       height: 400,
-      plugins: 'anchor autolink lists link image charmap preview searchreplace visualblocks code fullscreen table',
-      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link table | removeformat | code',
+      plugins: 'anchor autolink lists link image paste charmap preview searchreplace visualblocks code fullscreen table',
+      toolbar: 'undo redo | formatselect | bold italic underline strikethrough | forecolor backcolor | alignleft aligncenter alignright | bullist numlist | link image table | removeformat | code',
       menubar: false,
       branding: false,
+      ...Attachments.editorImageOptions,
       setup(editor) {
-        editor.on('init', () => editor.setContent(t.body || ''));
+        editor.on('init', () => {
+          editor.setContent(t.body || '');
+          fitEditorToViewport();
+        });
       }
     });
   }
+
+  // 페이지가 화면 높이를 넘지 않는 범위에서 에디터가 남는 세로 공간을 모두 차지하도록 맞춘다.
+  const EDITOR_MIN_HEIGHT = 300;
+  function fitEditorToViewport() {
+    const ed = tinymce.get('editBody');
+    if (!ed || !ed.initialized) return;
+    const container = ed.getContainer();
+    // 에디터 iframe은 페이지 CSS를 상속하지 않으므로 루트 글자 크기(2K/4K 확대)를 직접 맞춘다.
+    ed.getDoc().documentElement.style.fontSize = getComputedStyle(document.documentElement).fontSize;
+    // 에디터 외 페이지 높이 (body 밖으로 상쇄되는 .detail-card 하단 margin 포함)
+    const cardMargin = parseFloat(getComputedStyle(document.querySelector('.detail-card')).marginBottom) || 0;
+    const others = document.body.scrollHeight + cardMargin - container.offsetHeight;
+    const h = Math.max(EDITOR_MIN_HEIGHT, Math.floor(window.innerHeight - others));
+    container.style.height = h + 'px';
+  }
+
+  let fitEditorTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(fitEditorTimer);
+    fitEditorTimer = setTimeout(fitEditorToViewport, 100);
+  });
 
   function exitEditMode() {
     if (tinymce.get('editBody')) tinymce.remove('#editBody');
@@ -229,6 +277,7 @@
     const box = document.getElementById('editAlertBox');
     const title = document.getElementById('editTitle').value.trim();
     if (!title) { showAlert(box, 'danger', '제목을 입력하세요.'); return; }
+    if (editAttach.isUploading()) { showAlert(box, 'warning', '첨부파일 업로드가 끝난 뒤 저장하세요.'); return; }
 
     const editor = tinymce.get('editBody');
     const body = editor ? editor.getContent() : '';
@@ -243,7 +292,8 @@
         title,
         body,
         categoryIds,
-        completed
+        completed,
+        attachmentIds: editAttach.ids()
       })
     });
     const data = await res.json();

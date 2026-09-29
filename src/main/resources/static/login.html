@@ -7,7 +7,10 @@
   <link href="/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
   <style>
     body { background: #f0f2f5; }
-    .login-card { max-width: 420px; margin: 80px auto; }
+    .login-card { max-width: 26.25rem; margin: 80px auto; }
+    /* 고해상도(2K/4K): OS 배율 없이 쓰는 큰 화면에서 rem 기준 크기를 키워 UI 전체를 비례 확대 */
+    @media (min-width: 2400px) and (min-height: 1300px) { html { font-size: 18px; } }
+    @media (min-width: 3200px) and (min-height: 1800px) { html { font-size: 24px; } }
   </style>
 </head>
 <body>

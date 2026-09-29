@@ -38,3 +38,6 @@ out/
 
 ### Local config (contains credentials) ###
 src/main/resources/application-local.yaml
+
+# Claude Code 프로젝트 안내 (로컬 전용)
+CLAUDE.md

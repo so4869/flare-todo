@@ -28,6 +28,7 @@ public class TodoService {
 
     private final TodoRepository todoRepository;
     private final CategoryRepository categoryRepository;
+    private final AttachmentService attachmentService;
 
     public List<Todo> getTodos(User user, String filter, List<Long> categoryIds,
                                LocalDate createdFrom, LocalDate createdTo,
@@ -67,13 +68,15 @@ public class TodoService {
         boolean completed = Boolean.TRUE.equals(request.getCompleted());
         Todo todo = Todo.builder()
                 .title(request.getTitle())
-                .body(request.getBody())
+                .body(attachmentService.processBodyImages(user, request.getBody()))
                 .completed(completed)
                 .completedAt(completed ? Instant.now() : null)
                 .user(user)
                 .categories(resolveCategories(request.getCategoryIds(), user))
                 .build();
-        return todoRepository.save(todo);
+        todoRepository.save(todo);
+        attachmentService.syncTodoFiles(todo, request.getAttachmentIds(), user);
+        return todo;
     }
 
     @Transactional
@@ -81,7 +84,8 @@ public class TodoService {
         Todo todo = todoRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new IllegalArgumentException("Todo를 찾을 수 없습니다."));
         todo.setTitle(request.getTitle());
-        todo.setBody(request.getBody());
+        todo.setBody(attachmentService.processBodyImages(user, request.getBody()));
+        attachmentService.syncTodoFiles(todo, request.getAttachmentIds(), user);
         todo.getCategories().clear();
         todo.getCategories().addAll(resolveCategories(request.getCategoryIds(), user));
         if (request.getCompleted() != null) {
@@ -99,6 +103,7 @@ public class TodoService {
     public void deleteTodo(Long id, User user) {
         Todo todo = todoRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new IllegalArgumentException("Todo를 찾을 수 없습니다."));
+        attachmentService.unlinkTodo(todo);
         todoRepository.delete(todo);
     }
 
