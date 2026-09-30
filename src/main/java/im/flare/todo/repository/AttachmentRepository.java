@@ -17,6 +17,10 @@ public interface AttachmentRepository extends JpaRepository<Attachment, Long> {
 
     Optional<Attachment> findByS3Key(String s3Key);
 
+    Optional<Attachment> findByIdAndUser(Long id, User user);
+
+    List<Attachment> findByS3KeyInAndUserAndKind(Collection<String> s3Keys, User user, Attachment.Kind kind);
+
     List<Attachment> findByTodoAndKindOrderByIdAsc(Todo todo, Attachment.Kind kind);
 
     List<Attachment> findByIdInAndUserAndKind(Collection<Long> ids, User user, Attachment.Kind kind);

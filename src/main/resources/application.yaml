@@ -8,8 +8,9 @@ spring:
     active: local
   servlet:
     multipart:
-      max-file-size: 50MB
-      max-request-size: 55MB
+      # 업로드 요청 자체의 상한. 실제 첨부 1개당 최대 크기는 DB(app_settings: attachment.max-file-size)에서 관리
+      max-file-size: 1GB
+      max-request-size: 1GB
   jpa:
     hibernate:
       ddl-auto: update
@@ -41,5 +42,7 @@ app:
     cookie-domain: flare.im                     # todo.flare.im 과 todo-att.flare.im 이 공유하는 상위 도메인
     cookie-secure: true
     cookie-ttl: 12h
-    max-inline-image-size: 10MB
     orphan-retention: 1d
+    share-base-url: ${SHARE_BASE_URL:https://todo.flare.im}
+    share-redirect-ttl: 5m
+    share-max-days: 365

@@ -6,6 +6,8 @@ import im.flare.todo.entity.Attachment;
 import im.flare.todo.entity.User;
 import im.flare.todo.service.AttachmentService;
 import im.flare.todo.service.CdnCookieService;
+import im.flare.todo.service.SettingService;
+import im.flare.todo.service.ShareLinkService;
 import im.flare.todo.service.UserService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,8 @@ public class AttachmentController {
 
     private final AttachmentService attachmentService;
     private final CdnCookieService cdnCookieService;
+    private final ShareLinkService shareLinkService;
+    private final SettingService settingService;
     private final UserService userService;
 
     /** 할 일 첨부 파일 업로드 (파일 선택 / 드래그 앤 드롭) */
@@ -49,6 +53,29 @@ public class AttachmentController {
                 throw new IllegalArgumentException("파일을 읽을 수 없습니다.");
             }
         });
+    }
+
+    /** 업로드 제한 등 클라이언트가 알아야 할 설정 */
+    @GetMapping("/config")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> config() {
+        var max = settingService.getMaxAttachmentSize();
+        return ResponseEntity.ok(ApiResponse.success(Map.of(
+                "maxFileSize", max.toBytes(),
+                "maxFileSizeLabel", AttachmentService.formatSize(max))));
+    }
+
+    /** 외부 공유 링크 생성. days 는 실수(1.5 = 1일 12시간). */
+    @PostMapping("/{id}/share")
+    public ResponseEntity<ApiResponse<ShareLinkService.Created>> share(
+            @PathVariable Long id, @RequestBody Map<String, Double> body, Authentication auth) {
+        try {
+            User user = userService.findByUsername(auth.getName());
+            Double days = body.get("days");
+            if (days == null) throw new IllegalArgumentException("유효기간(일)을 입력하세요.");
+            return ResponseEntity.ok(ApiResponse.success(shareLinkService.create(id, days, user)));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 
     /** CDN(CloudFront) 서명 쿠키 발급. 페이지 로드 시와 만료 전에 주기적으로 호출한다. */

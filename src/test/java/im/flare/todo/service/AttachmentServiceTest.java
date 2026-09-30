@@ -2,8 +2,10 @@ package im.flare.todo.service;
 
 import im.flare.todo.config.AttachmentProperties;
 import im.flare.todo.entity.Attachment;
+import im.flare.todo.entity.Todo;
 import im.flare.todo.entity.User;
 import im.flare.todo.repository.AttachmentRepository;
+import im.flare.todo.repository.ShareLinkRepository;
 import im.flare.todo.repository.TodoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +35,8 @@ class AttachmentServiceTest {
 
     private final AttachmentRepository attachmentRepository = mock(AttachmentRepository.class);
     private final TodoRepository todoRepository = mock(TodoRepository.class);
+    private final ShareLinkRepository shareLinkRepository = mock(ShareLinkRepository.class);
+    private final SettingService settingService = mock(SettingService.class);
     private final S3Client s3Client = mock(S3Client.class);
     private final User user = User.builder().id(7L).username("u").build();
     private AttachmentService service;
@@ -40,9 +44,11 @@ class AttachmentServiceTest {
     @BeforeEach
     void setUp() {
         AttachmentProperties props = new AttachmentProperties("bucket", "ap-northeast-2", "https://cdn.test",
-                "KID", null, "test", false, Duration.ofHours(12), DataSize.ofMegabytes(10), Duration.ofDays(1));
-        service = new AttachmentService(attachmentRepository, todoRepository, s3Client, props);
+                "KID", null, "test", false, Duration.ofHours(12), Duration.ofDays(1),
+                "https://app.test", Duration.ofMinutes(5), 365);
+        service = new AttachmentService(attachmentRepository, todoRepository, shareLinkRepository, settingService, s3Client, props);
         when(attachmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(settingService.getMaxAttachmentSize()).thenReturn(DataSize.ofMegabytes(500));
     }
 
     @Test
@@ -80,6 +86,29 @@ class AttachmentServiceTest {
     }
 
     @Test
+    void DB에_설정된_최대_크기를_넘는_이미지는_거부한다() {
+        when(settingService.getMaxAttachmentSize()).thenReturn(DataSize.ofBytes(10));
+        assertThatThrownBy(() -> service.uploadImage(user, Base64.getDecoder().decode(PNG_B64), "a.png"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("10B");
+    }
+
+    @Test
+    void 첨부_목록은_파일_다음에_본문_이미지를_본문_순서대로_보여준다() {
+        Todo todo = Todo.builder().id(1L).user(user).body(
+                "<p><img src=\"https://cdn.test/u/7/img/b.png\"><img src=\"https://other.test/x.png\">" +
+                "<img src=\"https://cdn.test/u/7/img/a.png\"><img src=\"https://cdn.test/u/7/img/b.png\"></p>").build();
+        Attachment file = Attachment.builder().id(1L).kind(Attachment.Kind.FILE).s3Key("u/7/f/x").build();
+        Attachment a = Attachment.builder().id(2L).kind(Attachment.Kind.IMAGE).s3Key("u/7/img/a.png").build();
+        Attachment b = Attachment.builder().id(3L).kind(Attachment.Kind.IMAGE).s3Key("u/7/img/b.png").build();
+        when(attachmentRepository.findByTodoAndKindOrderByIdAsc(todo, Attachment.Kind.FILE)).thenReturn(List.of(file));
+        when(attachmentRepository.findByS3KeyInAndUserAndKind(List.of("u/7/img/b.png", "u/7/img/a.png"), user, Attachment.Kind.IMAGE))
+                .thenReturn(List.of(a, b));
+
+        assertThat(service.getTodoAttachments(todo)).containsExactly(file, b, a);
+    }
+
+    @Test
     void 정리_배치는_미연결_파일과_참조되지_않는_이미지만_삭제한다() {
         Attachment orphanFile = Attachment.builder().id(1L).user(user).kind(Attachment.Kind.FILE).s3Key("u/7/f/a").build();
         Attachment usedImage = Attachment.builder().id(2L).user(user).kind(Attachment.Kind.IMAGE).s3Key("u/7/img/used.png").build();
@@ -92,6 +121,8 @@ class AttachmentServiceTest {
 
         service.cleanupOrphans();
 
+        verify(shareLinkRepository).deleteExpired(any(Instant.class));
+        verify(shareLinkRepository).deleteByAttachment(orphanFile);
         verify(attachmentRepository).delete(orphanFile);
         verify(attachmentRepository).delete(unusedImage);
         verify(attachmentRepository, never()).delete(usedImage);

@@ -6,6 +6,7 @@ import lombok.Data;
 @Data
 public class AttachmentResponse {
     private Long id;
+    private String kind;   // FILE: 첨부 파일, IMAGE: 본문 이미지
     private String name;
     private long size;
     private String contentType;
@@ -14,6 +15,7 @@ public class AttachmentResponse {
     public static AttachmentResponse from(Attachment a, String url) {
         AttachmentResponse r = new AttachmentResponse();
         r.setId(a.getId());
+        r.setKind(a.getKind().name());
         r.setName(a.getOriginalName());
         r.setSize(a.getSize());
         r.setContentType(a.getContentType());

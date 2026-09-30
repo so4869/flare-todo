@@ -5,6 +5,7 @@ import im.flare.todo.entity.Attachment;
 import im.flare.todo.entity.Todo;
 import im.flare.todo.entity.User;
 import im.flare.todo.repository.AttachmentRepository;
+import im.flare.todo.repository.ShareLinkRepository;
 import im.flare.todo.repository.TodoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,6 +15,7 @@ import org.jsoup.nodes.Element;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -43,6 +45,8 @@ public class AttachmentService {
 
     private final AttachmentRepository attachmentRepository;
     private final TodoRepository todoRepository;
+    private final ShareLinkRepository shareLinkRepository;
+    private final SettingService settingService;
     private final S3Client s3Client;
     private final AttachmentProperties props;
 
@@ -54,6 +58,7 @@ public class AttachmentService {
     @Transactional
     public Attachment uploadFile(User user, MultipartFile file) {
         if (file.isEmpty()) throw new IllegalArgumentException("빈 파일은 첨부할 수 없습니다.");
+        checkSize(file.getSize());
         String name = sanitizeFileName(file.getOriginalFilename());
         String contentType = Optional.ofNullable(file.getContentType())
                 .filter(t -> !t.isBlank()).orElse("application/octet-stream");
@@ -78,13 +83,15 @@ public class AttachmentService {
     /** 본문 이미지 업로드. 같은 사용자의 같은 이미지는 한 번만 저장된다(자동 저장 반복 시 중복 방지). */
     @Transactional
     public Attachment uploadImage(User user, byte[] data, String originalName) {
-        if (data.length > props.maxInlineImageSize().toBytes()) {
-            throw new IllegalArgumentException("이미지는 %dMB 이하만 첨부할 수 있습니다."
-                    .formatted(props.maxInlineImageSize().toMegabytes()));
-        }
+        checkSize(data.length);
         ImageType type = ImageType.detect(data)
                 .orElseThrow(() -> new IllegalArgumentException("지원하지 않는 이미지 형식입니다. (PNG, JPEG, GIF, WebP)"));
-        String key = "u/%d/img/%s.%s".formatted(user.getId(), sha256Hex(data), type.ext);
+        String hash = sha256Hex(data);
+        String key = "u/%d/img/%s.%s".formatted(user.getId(), hash, type.ext);
+        // 붙여넣은 이미지는 파일명이 없으므로 해시 앞부분으로 구분 가능한 이름을 붙인다
+        String name = originalName == null || originalName.isBlank()
+                ? "image-%s.%s".formatted(hash.substring(0, 8), type.ext)
+                : sanitizeFileName(originalName);
 
         return attachmentRepository.findByS3Key(key).orElseGet(() -> {
             s3Client.putObject(b -> b.bucket(props.bucket()).key(key)
@@ -94,7 +101,7 @@ public class AttachmentService {
                     RequestBody.fromBytes(data));
             return attachmentRepository.save(Attachment.builder()
                     .user(user).kind(Attachment.Kind.IMAGE).s3Key(key)
-                    .originalName(sanitizeFileName(originalName)).contentType(type.mime).size(data.length)
+                    .originalName(name).contentType(type.mime).size(data.length)
                     .build());
         });
     }
@@ -117,14 +124,59 @@ public class AttachmentService {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("본문 이미지 데이터가 올바르지 않습니다.");
             }
-            String name = img.hasAttr("alt") && !img.attr("alt").isBlank() ? img.attr("alt") : "pasted-image";
-            img.attr("src", urlOf(uploadImage(user, bytes, name)));
+            img.attr("src", urlOf(uploadImage(user, bytes, img.attr("alt"))));
         }
         return doc.body().html();
     }
 
     public List<Attachment> getTodoFiles(Todo todo) {
         return attachmentRepository.findByTodoAndKindOrderByIdAsc(todo, Attachment.Kind.FILE);
+    }
+
+    /** 할 일의 첨부 목록: 첨부 파일 + 본문에 들어 있는 이미지(본문 순서). */
+    public List<Attachment> getTodoAttachments(Todo todo) {
+        List<Attachment> result = new ArrayList<>(getTodoFiles(todo));
+        List<String> keys = bodyImageKeys(todo.getBody());
+        if (!keys.isEmpty()) {
+            Map<String, Attachment> byKey = new HashMap<>();
+            attachmentRepository.findByS3KeyInAndUserAndKind(keys, todo.getUser(), Attachment.Kind.IMAGE)
+                    .forEach(a -> byKey.put(a.getS3Key(), a));
+            keys.stream().map(byKey::get).filter(Objects::nonNull).forEach(result::add);
+        }
+        return result;
+    }
+
+    // 본문 img 중 우리 CDN을 가리키는 것의 S3 키 (중복 제거, 등장 순서 유지)
+    private List<String> bodyImageKeys(String html) {
+        String prefix = props.cdnBaseUrl() + "/";
+        if (html == null || !html.contains(prefix)) return List.of();
+        Set<String> keys = new LinkedHashSet<>();
+        for (Element img : Jsoup.parseBodyFragment(html).select("img[src]")) {
+            String src = img.attr("src");
+            if (src.startsWith(prefix)) keys.add(src.substring(prefix.length()));
+        }
+        return new ArrayList<>(keys);
+    }
+
+    public Attachment getOwnedAttachment(Long id, User user) {
+        return attachmentRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new IllegalArgumentException("첨부파일을 찾을 수 없습니다."));
+    }
+
+    private void checkSize(long size) {
+        DataSize max = settingService.getMaxAttachmentSize();
+        if (size > max.toBytes()) {
+            throw new IllegalArgumentException("첨부파일은 %s까지 올릴 수 있습니다.".formatted(formatSize(max)));
+        }
+    }
+
+    /** 사람이 읽기 쉬운 크기 (500MB, 1GB 등) */
+    public static String formatSize(DataSize size) {
+        long b = size.toBytes();
+        if (b >= 1L << 30 && b % (1L << 30) == 0) return (b >> 30) + "GB";
+        if (b >= 1L << 20 && b % (1L << 20) == 0) return (b >> 20) + "MB";
+        if (b >= 1L << 10 && b % (1L << 10) == 0) return (b >> 10) + "KB";
+        return b + "B";
     }
 
     /**
@@ -152,6 +204,7 @@ public class AttachmentService {
     /** 유예기간이 지난 미연결 파일과, 어떤 본문에서도 참조하지 않는 이미지를 S3와 DB에서 삭제한다. */
     @Scheduled(cron = "${app.attachment.cleanup-cron:0 30 4 * * *}")
     public void cleanupOrphans() {
+        shareLinkRepository.deleteExpired(Instant.now());
         Instant before = Instant.now().minus(props.orphanRetention());
         int deleted = 0;
         for (Attachment a : attachmentRepository.findByKindAndTodoIsNullAndCreatedAtBefore(Attachment.Kind.FILE, before)) {
@@ -166,6 +219,7 @@ public class AttachmentService {
     private boolean delete(Attachment a) {
         try {
             s3Client.deleteObject(b -> b.bucket(props.bucket()).key(a.getS3Key()));
+            shareLinkRepository.deleteByAttachment(a);
             attachmentRepository.delete(a);
             return true;
         } catch (SdkException e) {

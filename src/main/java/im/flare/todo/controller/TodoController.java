@@ -30,7 +30,7 @@ public class TodoController {
     private final AttachmentService attachmentService;
 
     private TodoResponse toResponse(Todo todo) {
-        return TodoResponse.from(todo, attachmentService.getTodoFiles(todo).stream()
+        return TodoResponse.from(todo, attachmentService.getTodoAttachments(todo).stream()
                 .map(a -> AttachmentResponse.from(a, attachmentService.urlOf(a)))
                 .toList());
     }

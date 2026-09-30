@@ -86,6 +86,9 @@
     </button>
     <div class="ms-auto d-flex align-items-center gap-2">
       <span class="text-white small" id="usernameLabel"></span>
+      <button class="btn btn-outline-light btn-sm" onclick="Attachments.openShareManager({ onOpenTodo: openDetailModal })" title="공유 링크 관리">
+        <i class="bi bi-share"></i><span class="d-none d-md-inline ms-1">공유 링크</span>
+      </button>
       <button class="btn btn-outline-light btn-sm" onclick="openTzModal()" title="시간대 설정">
         <i class="bi bi-clock me-1"></i><span id="tzLabel">Asia/Seoul</span>
       </button>

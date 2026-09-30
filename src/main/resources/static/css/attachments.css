@@ -15,7 +15,7 @@
 .attach-box .attach-list:not(:empty) { margin-top: .5rem; }
 .attach-item {
   position: relative;
-  display: flex; align-items: center; gap: .5rem;
+  display: flex; flex-wrap: wrap; align-items: center; gap: .5rem;
   padding: .45rem .75rem;
   border: 1px solid #e9ecef; border-radius: 6px; background: #fff;
   font-size: .875rem;
@@ -29,3 +29,23 @@ a.attach-name:hover { color: #0d6efd; text-decoration: underline; }
 .attach-remove { font-size: .6rem; flex-shrink: 0; }
 .attach-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #e9ecef; border-radius: 0 0 6px 6px; overflow: hidden; }
 .attach-progress > div { height: 100%; background: #0d6efd; transition: width .2s; }
+
+/* 본문 이미지 표시 */
+.attach-badge { flex-shrink: 0; padding: .05rem .4rem; border-radius: 4px; background: #e7f1ff; color: #0d6efd; font-size: .7rem; cursor: help; }
+
+/* 외부 공유 */
+.attach-share-btn { padding: 0 .25rem; line-height: 1; color: #6c757d; flex-shrink: 0; }
+.attach-share-btn:hover { color: #0d6efd; }
+.attach-share { flex-basis: 100%; margin-top: .35rem; padding: .6rem .75rem; border-radius: 6px; background: #f8f9fa; }
+.attach-share-row { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.attach-share-days { width: 7.5rem; }
+.attach-share-preview { flex: 1; min-width: 10rem; }
+.attach-share-result { margin-top: .5rem; }
+.attach-share-error:not(:empty) { margin-top: .35rem; }
+
+/* 공유 링크 관리 */
+.share-mgr-item { padding: .75rem 0; }
+.share-mgr-item + .share-mgr-item { border-top: 1px solid #e9ecef; }
+.share-mgr-head { display: flex; align-items: center; gap: .6rem; }
+.share-mgr-info { flex: 1; min-width: 0; }
+.share-mgr-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
