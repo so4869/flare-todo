@@ -1,7 +1,9 @@
 package im.flare.todo.controller;
 
+import im.flare.todo.config.AttachmentProperties;
 import im.flare.todo.dto.ApiResponse;
 import im.flare.todo.dto.AttachmentResponse;
+import im.flare.todo.dto.ShareRequest;
 import im.flare.todo.entity.Attachment;
 import im.flare.todo.entity.User;
 import im.flare.todo.service.AttachmentService;
@@ -34,6 +36,7 @@ public class AttachmentController {
     private final ShareLinkService shareLinkService;
     private final SettingService settingService;
     private final UserService userService;
+    private final AttachmentProperties props;
 
     /** 할 일 첨부 파일 업로드 (파일 선택 / 드래그 앤 드롭) */
     @PostMapping
@@ -61,18 +64,26 @@ public class AttachmentController {
         var max = settingService.getMaxAttachmentSize();
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "maxFileSize", max.toBytes(),
-                "maxFileSizeLabel", AttachmentService.formatSize(max))));
+                "maxFileSizeLabel", AttachmentService.formatSize(max),
+                "shareMaxDays", props.shareMaxDays(),
+                "sharePresignedDays", settingService.getSharePresignedDays(),
+                "sharePresignedMaxDays", SettingService.SHARE_PRESIGNED_MAX_DAYS)));
     }
 
-    /** 외부 공유 링크 생성. days 는 실수(1.5 = 1일 12시간). */
+    /**
+     * 외부 공유 링크 생성. days 는 실수(1.5 = 1일 12시간).
+     * direct=true 면 앱 링크 대신 S3 서명 URL을 바로 돌려준다 (days 생략 시 DB 설정값, 최대 7일).
+     */
     @PostMapping("/{id}/share")
     public ResponseEntity<ApiResponse<ShareLinkService.Created>> share(
-            @PathVariable Long id, @RequestBody Map<String, Double> body, Authentication auth) {
+            @PathVariable Long id, @RequestBody ShareRequest body, Authentication auth) {
         try {
             User user = userService.findByUsername(auth.getName());
-            Double days = body.get("days");
-            if (days == null) throw new IllegalArgumentException("유효기간(일)을 입력하세요.");
-            return ResponseEntity.ok(ApiResponse.success(shareLinkService.create(id, days, user)));
+            if (body.isDirect()) {
+                return ResponseEntity.ok(ApiResponse.success(shareLinkService.createDirect(id, body.getDays(), user)));
+            }
+            if (body.getDays() == null) throw new IllegalArgumentException("유효기간(일)을 입력하세요.");
+            return ResponseEntity.ok(ApiResponse.success(shareLinkService.create(id, body.getDays(), user)));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }

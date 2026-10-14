@@ -29,8 +29,13 @@ public class ShareLinkService {
     private final AttachmentService attachmentService;
     private final S3Presigner s3Presigner;
     private final AttachmentProperties props;
+    private final SettingService settingService;
 
-    public record Created(Long id, String url, Instant expiresAt) {
+    /**
+     * 생성된 공유 링크. direct=false 면 앱 링크(/s/{token}, 취소 가능)이고 id 가 있다.
+     * direct=true 면 S3 서명 URL 그 자체라 DB에 남지 않고 취소할 수 없다(id=null).
+     */
+    public record Created(Long id, String url, Instant expiresAt, boolean direct) {
     }
 
     /** 공유 링크 관리 목록 항목. todo 는 첨부 파일일 때만 있다(본문 이미지는 여러 할 일에서 참조될 수 있음). */
@@ -41,15 +46,7 @@ public class ShareLinkService {
     /** 첨부의 외부 공유 링크를 만든다. days 는 실수(1.5 = 1일 12시간). */
     @Transactional
     public Created create(Long attachmentId, double days, User user) {
-        if (!Double.isFinite(days) || days <= 0) {
-            throw new IllegalArgumentException("유효기간은 0보다 커야 합니다.");
-        }
-        if (days > props.shareMaxDays()) {
-            throw new IllegalArgumentException("유효기간은 최대 %d일까지 설정할 수 있습니다.".formatted(props.shareMaxDays()));
-        }
-        Duration validity = Duration.ofSeconds(Math.round(days * 86400));
-        if (validity.toMinutes() < 1) throw new IllegalArgumentException("유효기간은 1분 이상이어야 합니다.");
-
+        Duration validity = toValidity(days, props.shareMaxDays());
         Attachment attachment = attachmentService.getOwnedAttachment(attachmentId, user);
         ShareLink link = shareLinkRepository.save(ShareLink.builder()
                 .token(newToken())
@@ -57,7 +54,33 @@ public class ShareLinkService {
                 .user(user)
                 .expiresAt(Instant.now().plus(validity))
                 .build());
-        return new Created(link.getId(), urlOf(link), link.getExpiresAt());
+        return new Created(link.getId(), urlOf(link), link.getExpiresAt(), false);
+    }
+
+    /**
+     * 앱을 거치지 않는 S3 서명 URL을 바로 만든다. days 가 null 이면 DB 설정(share.presigned-days, 기본 7일)을 쓴다.
+     * S3 SigV4 한계로 최대 7일이며, DB에 저장하지 않으므로 취소할 수 없다.
+     */
+    @Transactional(readOnly = true)
+    public Created createDirect(Long attachmentId, Double days, User user) {
+        double d = days == null ? settingService.getSharePresignedDays() : days;
+        Duration validity = toValidity(d, SettingService.SHARE_PRESIGNED_MAX_DAYS);
+        Attachment attachment = attachmentService.getOwnedAttachment(attachmentId, user);
+        Instant expiresAt = Instant.now().plus(validity);
+        return new Created(null, presign(attachment, validity), expiresAt, true);
+    }
+
+    private static Duration toValidity(double days, double maxDays) {
+        if (!Double.isFinite(days) || days <= 0) {
+            throw new IllegalArgumentException("유효기간은 0보다 커야 합니다.");
+        }
+        if (days > maxDays) {
+            String max = maxDays == Math.rint(maxDays) ? String.valueOf((long) maxDays) : String.valueOf(maxDays);
+            throw new IllegalArgumentException("유효기간은 최대 %s일까지 설정할 수 있습니다.".formatted(max));
+        }
+        Duration validity = Duration.ofSeconds(Math.round(days * 86400));
+        if (validity.toMinutes() < 1) throw new IllegalArgumentException("유효기간은 1분 이상이어야 합니다.");
+        return validity;
     }
 
     @Transactional(readOnly = true)
@@ -90,16 +113,16 @@ public class ShareLinkService {
     public Optional<String> resolve(String token) {
         return shareLinkRepository.findByTokenWithAttachment(token)
                 .filter(l -> l.getExpiresAt().isAfter(Instant.now()))
-                .map(l -> presign(l.getAttachment()));
+                .map(l -> presign(l.getAttachment(), props.shareRedirectTtl()));
     }
 
-    private String presign(Attachment a) {
+    private String presign(Attachment a, Duration ttl) {
         // 파일은 원래 이름으로 다운로드, 이미지는 브라우저에서 바로 보이도록
         String disposition = a.getKind() == Attachment.Kind.FILE
                 ? "attachment; filename*=UTF-8''" + URLEncoder.encode(a.getOriginalName(), StandardCharsets.UTF_8).replace("+", "%20")
                 : "inline";
         return s3Presigner.presignGetObject(r -> r
-                .signatureDuration(props.shareRedirectTtl())
+                .signatureDuration(ttl)
                 .getObjectRequest(g -> g.bucket(props.bucket()).key(a.getS3Key())
                         .responseContentDisposition(disposition)))
                 .url().toString();

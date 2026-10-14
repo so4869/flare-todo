@@ -115,10 +115,15 @@ const Attachments = (() => {
     return date.toLocaleString('ko-KR', opts);
   }
 
+  // 방식: link = 앱 링크(/s/{token}, 취소 가능) / direct = S3 서명 URL 그대로(최대 7일, 취소 불가)
   function sharePanelHtml() {
     return `
-      <div class="attach-share">
+      <div class="attach-share" data-mode="link">
         <div class="attach-share-row">
+          <select class="form-select form-select-sm attach-share-mode" aria-label="공유 방식" title="앱 링크는 나중에 취소할 수 있고, S3 직접 링크는 앱을 거치지 않는 대신 최대 7일·취소 불가">
+            <option value="link">앱 링크</option>
+            <option value="direct">S3 직접 링크</option>
+          </select>
           <span class="small text-muted">유효기간</span>
           <div class="input-group input-group-sm attach-share-days">
             <input type="number" class="form-control" min="0" step="any" value="1" aria-label="유효기간(일)">
@@ -139,12 +144,36 @@ const Attachments = (() => {
       </div>`;
   }
 
+  function isDirectMode(panel) {
+    return panel.querySelector('.attach-share-mode').value === 'direct';
+  }
+
+  // 방식을 바꾸면 유효기간 기본값·상한을 맞춘다. S3 직접 링크 기본값은 서버 설정(DB)에서 온다.
+  async function applyShareMode(panel) {
+    const direct = isDirectMode(panel);
+    const input = panel.querySelector('.attach-share-days input');
+    panel.dataset.mode = direct ? 'direct' : 'link';
+    let config = null;
+    try { config = await getConfig(); } catch (_) { /* 상한 검사는 서버가 다시 한다 */ }
+    if (direct) {
+      const max = config?.sharePresignedMaxDays ?? 7;
+      input.max = max;
+      input.value = Math.min(config?.sharePresignedDays ?? 7, max);
+    } else {
+      input.max = config?.shareMaxDays ?? 365;
+      input.value = 1;
+    }
+    updateSharePreview(panel);
+  }
+
   function updateSharePreview(panel) {
-    const days = parseFloat(panel.querySelector('.attach-share-days input').value);
+    const input = panel.querySelector('.attach-share-days input');
+    const days = parseFloat(input.value);
+    const max = parseFloat(input.max);
     const preview = panel.querySelector('.attach-share-preview');
-    preview.textContent = days > 0
-      ? `${describeDays(days)} 후 만료 (${formatDateTime(new Date(Date.now() + days * 86400000))})`
-      : '0보다 큰 값을 입력하세요';
+    if (!(days > 0)) preview.textContent = '0보다 큰 값을 입력하세요';
+    else if (max > 0 && days > max) preview.textContent = `${isDirectMode(panel) ? 'S3 직접 링크는 ' : ''}최대 ${max}일까지`;
+    else preview.textContent = `${describeDays(days)} 후 만료 (${formatDateTime(new Date(Date.now() + days * 86400000))})`;
   }
 
   async function createShareLink(panel, attachmentId) {
@@ -153,19 +182,22 @@ const Attachments = (() => {
     errorEl.classList.replace('text-muted', 'text-danger');
     errorEl.textContent = '';
     const days = parseFloat(panel.querySelector('.attach-share-days input').value);
+    const direct = isDirectMode(panel);
     if (!(days > 0)) { errorEl.textContent = '유효기간을 0보다 크게 입력하세요.'; return; }
     btn.disabled = true;
     try {
       const res = await authFetch(`/api/attachments/${attachmentId}/share`, {
         method: 'POST',
-        body: JSON.stringify({ days })
+        body: JSON.stringify({ days, direct })
       });
       const data = await res.json();
       if (!data.success) { errorEl.textContent = data.message; return; }
-      panel.dataset.linkId = data.data.id;
+      if (data.data.direct) delete panel.dataset.linkId; else panel.dataset.linkId = data.data.id;
+      panel.querySelector('.attach-share-revoke').classList.toggle('d-none', !!data.data.direct);
       panel.querySelector('.attach-share-url').value = data.data.url;
-      panel.querySelector('.attach-share-expires').textContent =
-        `${formatDateTime(new Date(data.data.expiresAt))}까지 누구나 이 링크로 받을 수 있습니다.`;
+      panel.querySelector('.attach-share-expires').textContent = data.data.direct
+        ? `${formatDateTime(new Date(data.data.expiresAt))}까지 누구나 이 S3 링크로 받을 수 있습니다. 이 링크는 취소할 수 없고 공유 링크 목록에도 나오지 않습니다.`
+        : `${formatDateTime(new Date(data.data.expiresAt))}까지 누구나 이 링크로 받을 수 있습니다.`;
       panel.querySelector('.attach-share-result').classList.remove('d-none');
     } catch (e) {
       errorEl.textContent = '링크를 만들지 못했습니다.';
@@ -219,6 +251,7 @@ const Attachments = (() => {
         li.insertAdjacentHTML('beforeend', sharePanelHtml());
         const panel = li.querySelector('.attach-share');
         updateSharePreview(panel);
+        applyShareMode(panel);
         panel.querySelector('.attach-share-days input').focus();
       } else if (e.target.closest('.attach-share-create')) {
         createShareLink(li.querySelector('.attach-share'), li.dataset.id);
@@ -232,6 +265,10 @@ const Attachments = (() => {
     ul.addEventListener('input', e => {
       const panel = e.target.closest('.attach-share');
       if (panel && e.target.matches('.attach-share-days input')) updateSharePreview(panel);
+    });
+    ul.addEventListener('change', e => {
+      const panel = e.target.closest('.attach-share');
+      if (panel && e.target.matches('.attach-share-mode')) applyShareMode(panel);
     });
     ul.addEventListener('keydown', e => {
       const panel = e.target.closest('.attach-share');

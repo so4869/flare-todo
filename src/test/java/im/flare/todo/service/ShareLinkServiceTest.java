@@ -8,11 +8,14 @@ import im.flare.todo.repository.ShareLinkRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,6 +26,7 @@ class ShareLinkServiceTest {
     private final ShareLinkRepository shareLinkRepository = mock(ShareLinkRepository.class);
     private final AttachmentService attachmentService = mock(AttachmentService.class);
     private final S3Presigner s3Presigner = mock(S3Presigner.class);
+    private final SettingService settingService = mock(SettingService.class);
     private final User user = User.builder().id(7L).build();
     private ShareLinkService service;
 
@@ -31,7 +35,7 @@ class ShareLinkServiceTest {
         AttachmentProperties props = new AttachmentProperties("bucket", "ap-northeast-2", "https://cdn.test",
                 "KID", null, "test", false, Duration.ofHours(12), Duration.ofDays(1),
                 "https://app.test", Duration.ofMinutes(5), 365);
-        service = new ShareLinkService(shareLinkRepository, attachmentService, s3Presigner, props);
+        service = new ShareLinkService(shareLinkRepository, attachmentService, s3Presigner, props, settingService);
         when(attachmentService.getOwnedAttachment(1L, user)).thenReturn(Attachment.builder().id(1L).build());
         when(shareLinkRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
@@ -53,6 +57,40 @@ class ShareLinkServiceTest {
         assertThatThrownBy(() -> service.create(1L, Double.NaN, user)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.create(1L, 366, user)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.create(1L, 0.0001, user)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void S3_직접_링크는_일수를_생략하면_DB_설정값을_쓴다() throws Exception {
+        when(settingService.getSharePresignedDays()).thenReturn(3.0);
+        var presigned = mock(PresignedGetObjectRequest.class);
+        when(presigned.url()).thenReturn(new java.net.URI("https://bucket.s3.test/u/7/f/x?X-Amz-Signature=abc").toURL());
+        when(s3Presigner.presignGetObject(any(Consumer.class))).thenReturn(presigned);
+        when(attachmentService.getOwnedAttachment(1L, user)).thenReturn(
+                Attachment.builder().id(1L).kind(Attachment.Kind.FILE).originalName("a.txt").s3Key("u/7/f/x").build());
+
+        Instant before = Instant.now();
+        ShareLinkService.Created c = service.createDirect(1L, null, user);
+
+        assertThat(c.direct()).isTrue();
+        assertThat(c.id()).isNull();
+        assertThat(c.url()).startsWith("https://bucket.s3.test/");
+        assertThat(Duration.between(before, c.expiresAt())).isBetween(
+                Duration.ofDays(3).minusSeconds(2), Duration.ofDays(3).plusSeconds(2));
+        verify(shareLinkRepository, never()).save(any());
+
+        @SuppressWarnings("unchecked")
+        var captor = org.mockito.ArgumentCaptor.forClass(Consumer.class);
+        verify(s3Presigner).presignGetObject(captor.capture());
+        GetObjectPresignRequest.Builder b = GetObjectPresignRequest.builder();
+        captor.getValue().accept(b);
+        assertThat(b.build().signatureDuration()).isEqualTo(Duration.ofDays(3));
+    }
+
+    @Test
+    void S3_직접_링크는_7일을_넘길_수_없다() {
+        assertThatThrownBy(() -> service.createDirect(1L, 7.5, user))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("7일");
+        verifyNoInteractions(s3Presigner);
     }
 
     @Test

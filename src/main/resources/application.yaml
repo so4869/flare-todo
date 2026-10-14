@@ -46,3 +46,6 @@ app:
     share-base-url: ${SHARE_BASE_URL:https://todo.flare.im}
     share-redirect-ttl: 5m
     share-max-days: 365
+    # S3 직접 공유 링크(최대 7일)용 장기 자격증명. 비우면 기본 체인(인스턴스 역할 = 임시 자격증명이라 링크가 수 시간 뒤 끊김)
+    presign-access-key-id: ${S3_PRESIGN_ACCESS_KEY_ID:}
+    presign-secret-access-key: ${S3_PRESIGN_SECRET_ACCESS_KEY:}
