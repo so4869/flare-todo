@@ -27,8 +27,25 @@ spring:
     driver-class-name: DRIVERCLASSNAME
 
 jwt:
-  secret: ${JWT_SECRET:flare-todo-default-secret-key-change-in-production}
+  # 필수. 32바이트 이상의 무작위 문자열 (예: openssl rand -base64 48). 비어 있으면 기동하지 않는다.
+  secret: ${JWT_SECRET:}
   expiration: 86400000  # 24시간 (ms)
+
+# MCP 서버 (Streamable HTTP, POST/GET /mcp). 인증은 Authorization: Bearer <API 토큰 ft_...> (SecurityConfig)
+spring.ai.mcp.server:
+  name: flare-todo
+  version: 0.0.1
+  type: SYNC
+  protocol: STREAMABLE
+  instructions: "Flare Todo 의 할 일·카테고리를 읽고 관리하는 도구. 사용자는 Bearer API 토큰으로 식별된다."
+  capabilities:
+    tool: true
+    resource: false
+    prompt: false
+    completion: false
+  streamable-http:
+    mcp-endpoint: /mcp
+    keep-alive-interval: 30s
 
 
 # 첨부파일: S3 저장 + CloudFront(서명 쿠키)로 제공

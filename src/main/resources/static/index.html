@@ -89,6 +89,9 @@
       <button class="btn btn-outline-light btn-sm" onclick="Attachments.openShareManager({ onOpenTodo: openDetailModal })" title="공유 링크 관리">
         <i class="bi bi-share"></i><span class="d-none d-md-inline ms-1">공유 링크</span>
       </button>
+      <button class="btn btn-outline-light btn-sm" onclick="ApiTokens.open()" title="API 토큰 (MCP 연결용)">
+        <i class="bi bi-key"></i><span class="d-none d-md-inline ms-1">API 토큰</span>
+      </button>
       <button class="btn btn-outline-light btn-sm" onclick="openTzModal()" title="시간대 설정">
         <i class="bi bi-clock me-1"></i><span id="tzLabel">Asia/Seoul</span>
       </button>
@@ -360,6 +363,7 @@
 <script src="/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="/tinymce/tinymce.min.js"></script>
 <script src="/js/attachments.js"></script>
+<script src="/js/api-tokens.js"></script>
 <script>
   async function authFetch(url, options = {}) {
     const token = localStorage.getItem('jwt_token');

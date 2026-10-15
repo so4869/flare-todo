@@ -1,0 +1,17 @@
+# 테스트용: 인메모리 H2, 고정 JWT 시크릿, 외부 서비스(S3/CloudFront) 미사용
+spring:
+  datasource:
+    url: jdbc:h2:mem:flare_todo_test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+jwt:
+  secret: test-only-secret-key-that-is-at-least-32-bytes-long
+
+app:
+  attachment:
+    private-key-path: ""
