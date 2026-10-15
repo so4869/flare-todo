@@ -17,17 +17,25 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import tools.jackson.databind.json.JsonMapper;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 /**
  * 실제 /mcp 엔드포인트를 MCP Java 클라이언트로 호출해 PAT 인증·스코프·사용자 격리가 끝까지 동작하는지 확인한다.
@@ -44,6 +52,12 @@ class McpServerIntegrationTest {
     UserService userService;
     @Autowired
     ApiTokenService apiTokenService;
+
+    // S3 는 테스트에서 실제로 호출하지 않는다
+    @MockitoBean
+    S3Client s3Client;
+    @MockitoBean
+    S3Presigner s3Presigner;
 
     String fullToken;      // 읽기+쓰기
     String readOnlyToken;  // 읽기만
@@ -121,7 +135,7 @@ class McpServerIntegrationTest {
         try (McpSyncClient client = mcpClient(fullToken)) {
             List<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).toList();
             assertThat(tools).contains("list_todos", "get_todo", "create_todo", "update_todo", "complete_todo",
-                    "delete_todo", "list_categories", "create_category");
+                    "delete_todo", "list_categories", "create_category", "get_attachment_url", "upload_attachment");
 
             Map<String, Object> cat = structured(client.callTool(
                     new McpSchema.CallToolRequest("create_category", Map.of("name", "업무"))));
@@ -150,6 +164,60 @@ class McpServerIntegrationTest {
                         .content().stream().map(Object::toString).toList();
                 assertThat(String.join("", bobTitles)).doesNotContain("MCP 로 만든 할 일");
             }
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void attachmentsCanBeUploadedListedAndLinked() throws Exception {
+        var presigned = mock(PresignedGetObjectRequest.class);
+        when(presigned.url()).thenReturn(new java.net.URI("https://bucket.s3.test/u/1/f/x?X-Amz-Signature=abc").toURL());
+        when(s3Presigner.presignGetObject(any(java.util.function.Consumer.class))).thenReturn(presigned);
+
+        try (McpSyncClient client = mcpClient(fullToken)) {
+            Number todoId = (Number) structured(client.callTool(new McpSchema.CallToolRequest("create_todo",
+                    Map.of("title", "첨부 테스트")))).get("id");
+
+            String base64 = Base64.getEncoder().encodeToString("hello,world\n".getBytes(StandardCharsets.UTF_8));
+            Map<String, Object> uploaded = structured(client.callTool(new McpSchema.CallToolRequest("upload_attachment",
+                    Map.of("todoId", todoId, "fileName", "메모.csv", "contentBase64", base64))));
+            assertThat(uploaded.get("kind")).isEqualTo("FILE");
+            assertThat(uploaded.get("name")).isEqualTo("메모.csv");
+            assertThat(uploaded.get("contentType")).isEqualTo("text/csv");
+            assertThat(((Number) uploaded.get("size")).intValue()).isEqualTo(12);
+            verify(s3Client, times(1)).putObject(any(java.util.function.Consumer.class),
+                    any(software.amazon.awssdk.core.sync.RequestBody.class));
+
+            Map<String, Object> detail = structured(client.callTool(
+                    new McpSchema.CallToolRequest("get_todo", Map.of("id", todoId))));
+            List<Map<String, Object>> attachments = (List<Map<String, Object>>) detail.get("attachments");
+            assertThat(attachments).hasSize(1);
+            assertThat(attachments.get(0).get("id")).isEqualTo(uploaded.get("id"));
+
+            Map<String, Object> link = structured(client.callTool(new McpSchema.CallToolRequest("get_attachment_url",
+                    Map.of("attachmentId", uploaded.get("id")))));
+            assertThat((String) link.get("url")).startsWith("https://bucket.s3.test/");
+            assertThat(link.get("expiresAt")).isNotNull();
+
+            // 잘못된 base64, 7일 초과 유효기간은 오류로
+            assertThat(client.callTool(new McpSchema.CallToolRequest("upload_attachment",
+                    Map.of("todoId", todoId, "fileName", "x.bin", "contentBase64", "@@not-base64@@"))).isError()).isTrue();
+            assertThat(client.callTool(new McpSchema.CallToolRequest("get_attachment_url",
+                    Map.of("attachmentId", uploaded.get("id"), "minutes", 8 * 24 * 60))).isError()).isTrue();
+
+            // 다른 사용자의 첨부 URL 은 만들 수 없다
+            try (McpSyncClient bob = mcpClient(otherUserToken)) {
+                assertThat(bob.callTool(new McpSchema.CallToolRequest("get_attachment_url",
+                        Map.of("attachmentId", uploaded.get("id")))).isError()).isTrue();
+            }
+        }
+
+        // 읽기 전용 토큰은 업로드 불가
+        try (McpSyncClient ro = mcpClient(readOnlyToken)) {
+            McpSchema.CallToolResult denied = ro.callTool(new McpSchema.CallToolRequest("upload_attachment",
+                    Map.of("todoId", 1, "fileName", "a.txt", "contentBase64", "aGk=")));
+            assertThat(denied.isError()).isTrue();
+            assertThat(denied.content().toString()).contains("todos:write");
         }
     }
 
