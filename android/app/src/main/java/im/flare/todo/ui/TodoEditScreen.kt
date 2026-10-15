@@ -266,15 +266,24 @@ fun TodoEditScreen(
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) vm.upload(uris, ::toast)
     }
-    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) scope.launch {
-            try {
-                val image = AppGraph.repo.uploadImage(uri)
-                editor?.evaluateJavascript("insertImage(${Json.encodeToString(image.url)})", null)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Throwable) {
-                snackbar.showSnackbar(e.userMessage())
+    // 사진은 여러 장을 한 번에 고를 수 있다. 고른 순서대로 올려서 본문에 차례로 넣는다.
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        if (uris.isNotEmpty()) scope.launch {
+            var failed = 0
+            var lastError: String? = null
+            uris.forEach { uri ->
+                try {
+                    val image = AppGraph.repo.uploadImage(uri)
+                    editor?.evaluateJavascript("insertImage(${Json.encodeToString(image.url)})", null)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    failed++
+                    lastError = e.userMessage()
+                }
+            }
+            lastError?.let { message ->
+                snackbar.showSnackbar(if (uris.size > 1) "사진 ${failed}장을 올리지 못했습니다: $message" else message)
             }
         }
     }
