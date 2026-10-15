@@ -58,26 +58,45 @@ public class AttachmentService {
     @Transactional
     public Attachment uploadFile(User user, MultipartFile file) {
         if (file.isEmpty()) throw new IllegalArgumentException("빈 파일은 첨부할 수 없습니다.");
-        checkSize(file.getSize());
-        String name = sanitizeFileName(file.getOriginalFilename());
-        String contentType = Optional.ofNullable(file.getContentType())
+        try (InputStream in = file.getInputStream()) {
+            return uploadFile(user, in, file.getSize(), file.getOriginalFilename(), file.getContentType());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** 바이트 배열로 받은 파일 업로드 (MCP 등 multipart 가 아닌 경로) */
+    @Transactional
+    public Attachment uploadFile(User user, byte[] data, String originalName, String contentType) {
+        if (data == null || data.length == 0) throw new IllegalArgumentException("빈 파일은 첨부할 수 없습니다.");
+        return uploadFile(user, new java.io.ByteArrayInputStream(data), data.length, originalName, contentType);
+    }
+
+    private Attachment uploadFile(User user, InputStream in, long size, String originalName, String rawContentType) {
+        checkSize(size);
+        String name = sanitizeFileName(originalName);
+        String contentType = Optional.ofNullable(rawContentType)
                 .filter(t -> !t.isBlank()).orElse("application/octet-stream");
         String key = "u/%d/f/%s".formatted(user.getId(), UUID.randomUUID());
 
         // 파일은 형식과 무관하게 항상 다운로드로 내려보내 CDN 도메인에서 HTML/SVG 등이 실행되지 않게 한다.
-        try (InputStream in = file.getInputStream()) {
-            s3Client.putObject(b -> b.bucket(props.bucket()).key(key)
-                            .contentType(contentType)
-                            .contentDisposition(contentDisposition("attachment", name))
-                            .cacheControl(FILE_CACHE_CONTROL),
-                    RequestBody.fromInputStream(in, file.getSize()));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+        s3Client.putObject(b -> b.bucket(props.bucket()).key(key)
+                        .contentType(contentType)
+                        .contentDisposition(contentDisposition("attachment", name))
+                        .cacheControl(FILE_CACHE_CONTROL),
+                RequestBody.fromInputStream(in, size));
         return attachmentRepository.save(Attachment.builder()
                 .user(user).kind(Attachment.Kind.FILE).s3Key(key)
-                .originalName(name).contentType(contentType).size(file.getSize())
+                .originalName(name).contentType(contentType).size(size)
                 .build());
+    }
+
+    /** 할 일에 첨부 파일 하나를 추가로 연결한다 (기존 첨부는 유지). */
+    @Transactional
+    public void attachFileToTodo(Todo todo, Attachment file, User user) {
+        List<Long> ids = new ArrayList<>(getTodoFiles(todo).stream().map(Attachment::getId).toList());
+        ids.add(file.getId());
+        syncTodoFiles(todo, ids, user);
     }
 
     /** 본문 이미지 업로드. 같은 사용자의 같은 이미지는 한 번만 저장된다(자동 저장 반복 시 중복 방지). */

@@ -116,6 +116,16 @@ public class ShareLinkService {
                 .map(l -> presign(l.getAttachment(), props.shareRedirectTtl()));
     }
 
+    /** MCP 등에서 쓰는 1회성 다운로드 URL. DB에 남지 않고 S3 SigV4 한계(7일) 안에서 ttl 만큼만 유효하다. */
+    @Transactional(readOnly = true)
+    public String downloadUrl(Long attachmentId, Duration ttl, User user) {
+        if (ttl == null || ttl.toMinutes() < 1) throw new IllegalArgumentException("유효기간은 1분 이상이어야 합니다.");
+        if (ttl.toDays() > SettingService.SHARE_PRESIGNED_MAX_DAYS) {
+            throw new IllegalArgumentException("유효기간은 최대 %d일까지 설정할 수 있습니다.".formatted((long) SettingService.SHARE_PRESIGNED_MAX_DAYS));
+        }
+        return presign(attachmentService.getOwnedAttachment(attachmentId, user), ttl);
+    }
+
     private String presign(Attachment a, Duration ttl) {
         // 파일은 원래 이름으로 다운로드, 이미지는 브라우저에서 바로 보이도록
         String disposition = a.getKind() == Attachment.Kind.FILE
