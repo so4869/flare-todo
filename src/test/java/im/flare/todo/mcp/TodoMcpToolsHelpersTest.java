@@ -25,6 +25,14 @@ class TodoMcpToolsHelpersTest {
     }
 
     @Test
+    void guessContentType() {
+        assertThat(TodoMcpTools.guessContentType("a.pdf")).isEqualTo("application/pdf");
+        assertThat(TodoMcpTools.guessContentType("notes.md")).isEqualTo("text/markdown");
+        assertThat(TodoMcpTools.guessContentType("data.csv")).isEqualTo("text/csv");
+        assertThat(TodoMcpTools.guessContentType("blob.unknownext")).isEqualTo("application/octet-stream");
+    }
+
+    @Test
     void parseDate() {
         assertThat(TodoMcpTools.parseDate("2026-10-15")).isEqualTo(LocalDate.of(2026, 10, 15));
         assertThat(TodoMcpTools.parseDate(null)).isNull();

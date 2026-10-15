@@ -6,7 +6,10 @@ MCP 클라이언트에서 할 일과 카테고리를 읽고 관리할 수 있다
 - 엔드포인트: `https://todo.flare.im/mcp` (Streamable HTTP)
 - 인증: `Authorization: Bearer <API 토큰>` 헤더. 토큰은 웹 UI 상단의 **API 토큰** 메뉴에서 발급한다.
 - 도구: `list_todos`, `get_todo`, `create_todo`, `update_todo`, `complete_todo`, `delete_todo`,
-  `list_categories`, `create_category`
+  `list_categories`, `create_category`, `get_attachment_url`, `upload_attachment`
+- 첨부: `get_todo` 가 첨부 목록(ID·이름·크기)을 함께 돌려주고, `get_attachment_url` 이 짧게 유효한 S3 서명
+  다운로드 URL(기본 15분, 최대 7일)을 만든다. `upload_attachment` 는 base64 로 받은 파일(최대 20MB)을 S3 에 올려
+  할 일에 연결한다. CloudFront 서명 쿠키는 MCP 클라이언트가 쓸 수 없어 서명 URL 방식을 쓴다.
 
 ## API 토큰(PAT)
 
