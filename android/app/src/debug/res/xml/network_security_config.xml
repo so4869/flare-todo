@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 디버그 빌드만 로컬 개발 서버(http://10.0.2.2:9090 등)에 접속할 수 있게 평문 HTTP를 허용한다. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
