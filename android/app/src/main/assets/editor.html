@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<style>
+/*CONTENT_CSS*/
+html, body { height: 100%; }
+body { padding: 0; }
+#ed { min-height: 100%; box-sizing: border-box; padding: 12px 16px 24px; outline: none; }
+#ed:empty::before { content: '본문을 입력하세요'; opacity: .45; }
+</style>
+</head>
+<body>
+<div id="ed" contenteditable="true"></div>
+<script>
+  const ed = document.getElementById('ed');
+  let dirty = false;
+  document.execCommand('defaultParagraphSeparator', false, 'p');
+  ed.addEventListener('input', () => { dirty = true; });
+
+  function setHtml(html) { ed.innerHTML = html || ''; dirty = false; }
+  function getHtml() { return ed.innerHTML; }
+  function isDirty() { return dirty ? '1' : '0'; }
+  function clearDirty() { dirty = false; }
+
+  function cmd(name, value) {
+    ed.focus();
+    document.execCommand(name, false, value);
+    dirty = true;
+  }
+
+  // 제목(h3) ↔ 본문 단락 전환
+  function toggleHeading() {
+    const current = String(document.queryCommandValue('formatBlock')).toLowerCase();
+    cmd('formatBlock', /^h[1-6]$/.test(current) ? 'p' : 'h3');
+  }
+
+  function escapeAttr(s) {
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  function insertImage(url) {
+    cmd('insertHTML', '<p><img src="' + escapeAttr(url) + '"></p>');
+  }
+
+  // 선택한 글이 있으면 링크를 걸고, 없으면 주소 자체를 링크로 넣는다.
+  function insertLink(url) {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) cmd('createLink', url);
+    else cmd('insertHTML', '<a href="' + escapeAttr(url) + '">' + escapeAttr(url) + '</a>');
+  }
+</script>
+</body>
+</html>
