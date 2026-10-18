@@ -14,8 +14,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
-/** 알림에서 앱을 열 때의 요청: 해당 카테고리의 미완료 목록을 보여주고, 필요하면 새 할 일 작성으로 간다. */
-data class LaunchRequest(val categoryId: Long, val createNew: Boolean)
+/**
+ * 알림에서 앱을 열 때의 요청: 해당 카테고리의 미완료 목록을 보여주고, 필요하면 새 할 일 작성으로 간다.
+ * todoId 가 있으면(비용 공유 후 "열기") 목록 조건은 그대로 두고 그 할 일을 연다.
+ */
+data class LaunchRequest(val categoryId: Long, val createNew: Boolean, val todoId: Long? = null)
 
 /** 앱 전역 객체 모음 (수동 DI) */
 object AppGraph {
