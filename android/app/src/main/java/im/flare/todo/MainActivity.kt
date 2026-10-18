@@ -16,6 +16,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import im.flare.todo.data.SessionState
 import im.flare.todo.notify.PinnedNotifier
 import im.flare.todo.notify.PinnedSync
 import im.flare.todo.ui.CategoriesScreen
@@ -49,10 +50,15 @@ class MainActivity : FragmentActivity() {
         if (AppGraph.unlocked) PinnedSync.apply(this)
     }
 
-    /** 상태표시줄 알림에서 온 flaretodo://category/{id} 또는 flaretodo://new/{id} */
+    /** 상태표시줄 알림에서 온 flaretodo://category/{id} 또는 flaretodo://new/{id}, 비용 공유에서 온 flaretodo://todo/{id} */
     private fun handleIntent(intent: Intent?) {
         val data = intent?.data ?: return
         if (data.scheme != PinnedNotifier.SCHEME) return
+        if (data.host == "todo") {
+            val todoId = data.lastPathSegment?.toLongOrNull() ?: return
+            AppGraph.launchRequest.value = LaunchRequest(SessionState.PIN_ALL, createNew = false, todoId = todoId)
+            return
+        }
         val categoryId = data.lastPathSegment?.toLongOrNull() ?: return
         AppGraph.launchRequest.value = LaunchRequest(categoryId, createNew = data.host == "new")
     }
