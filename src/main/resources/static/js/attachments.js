@@ -369,6 +369,29 @@ const Attachments = (() => {
     }
   }
 
+  // ── 전체받기 (zip) ──────────────────────────────────────
+  // 서버가 최신 zip 을 CDN에 준비해 두고 주소를 돌려준다. CDN 은 서명 쿠키로 인증되므로 링크만 열면 받아진다.
+  async function downloadAll(todoId, btn) {
+    const label = btn?.innerHTML;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>압축 중'; }
+    try {
+      const res = await authFetch(`/api/todos/${todoId}/attachments/zip`);
+      if (!res) return;
+      const data = await res.json();
+      if (!data.success) { alert(data.message || '압축 파일을 만들지 못했습니다.'); return; }
+      const a = document.createElement('a');
+      a.href = data.data.url;
+      a.download = data.data.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      alert('압축 파일을 만들지 못했습니다.');
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = label; }
+    }
+  }
+
   // ── 목록 항목 ───────────────────────────────────────────
   // 본문 이미지(kind=IMAGE)는 본문에서 지워야 사라지므로 삭제 버튼 대신 '본문' 표시
   function itemHtml(a, removable) {
@@ -475,5 +498,5 @@ const Attachments = (() => {
     };
   }
 
-  return { keepCdnSession, refreshCdnSession, editorImageOptions, createBox, renderList, formatSize, openShareManager };
+  return { keepCdnSession, refreshCdnSession, editorImageOptions, createBox, renderList, formatSize, openShareManager, downloadAll };
 })();

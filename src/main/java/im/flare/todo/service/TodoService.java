@@ -29,6 +29,7 @@ public class TodoService {
     private final TodoRepository todoRepository;
     private final CategoryRepository categoryRepository;
     private final AttachmentService attachmentService;
+    private final AttachmentZipService attachmentZipService;
 
     public List<Todo> getTodos(User user, String filter, List<Long> categoryIds,
                                LocalDate createdFrom, LocalDate createdTo,
@@ -104,6 +105,7 @@ public class TodoService {
         Todo todo = todoRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new IllegalArgumentException("Todo를 찾을 수 없습니다."));
         attachmentService.unlinkTodo(todo);
+        attachmentZipService.delete(todo);
         todoRepository.delete(todo);
     }
 
