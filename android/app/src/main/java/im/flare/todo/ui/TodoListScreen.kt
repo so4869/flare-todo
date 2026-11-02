@@ -204,6 +204,7 @@ fun TodoListScreen(
     LaunchedEffect(request) {
         val r = request ?: return@LaunchedEffect
         AppGraph.launchRequest.value = null
+        r.todoId?.let { onOpen(it); return@LaunchedEffect }
         val ids = if (r.categoryId == SessionState.PIN_ALL) emptyList() else listOf(r.categoryId)
         vm.updateFilter(ListFilter(status = "active", categoryIds = ids, sort = filter.sort))
         if (r.createNew) onNew(ids)

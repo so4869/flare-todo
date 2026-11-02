@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Flare Todo</string>
+    <string name="share_expense_label">Flare Todo 비용</string>
 </resources>

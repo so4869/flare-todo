@@ -3,4 +3,11 @@
         <item name="android:windowBackground">@color/window_background</item>
         <item name="android:colorAccent">@color/brand</item>
     </style>
+
+    <!-- 공유 화면: 뒤 앱이 비치는 반투명 창 위에 대화상자만 띄운다. -->
+    <style name="Theme.FlareTodo.Share">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

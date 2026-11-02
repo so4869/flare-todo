@@ -34,6 +34,7 @@ cd android
 | 첨부 | 파일 업로드, 본문 이미지 삽입, 외부 공유 링크 생성·관리 |
 | **첨부 저장** | `Download/flare-todo/` 에 저장 (시스템 DownloadManager, 저장소 권한 불필요). CloudFront 서명 쿠키를 받아 요청에 실어 보낸다 (`download/AttachmentDownloader.kt`) |
 | **상태표시줄 고정 (카테고리별)** | 서랍 메뉴 → "카테고리 · 상태표시줄 설정". 켠 카테고리마다 미완료 목록을 담은 진행 중 알림을 띄운다. Android 16 Live Update 로 승격을 요청해 상태표시줄 칩 / One UI Now Bar 에 건수 표시 (`notify/PinnedNotifier.kt`) |
+| **공유 → "Flare Todo 비용"** | 갤러리에서 사진(여러 장 가능)을 공유하면 "비용" 카테고리의 이번 달 할 일(제목 `yyyyMM`, 예: 202610, 사용자 시간대 기준)에 첨부한다. 없으면 할 일을, 카테고리도 없으면 카테고리까지 만든다 (`share/`) |
 
 ## 구조
 
@@ -45,6 +46,7 @@ im.flare.todo/
 ├── auth/BiometricLogin.kt
 ├── notify/PinnedNotifier.kt   # 알림 + WorkManager 15분 주기 동기화 + 부팅 후 복구
 ├── download/AttachmentDownloader.kt
+├── share/                 # 공유 메뉴 "Flare Todo 비용" (이번 달 비용 할 일에 사진 첨부)
 └── ui/                    # Compose 화면
 ```
 

@@ -58,10 +58,8 @@ class TodoRepository(
     // ── 카테고리 ─────────────────────────────────────────────
     suspend fun categories(): List<Category> = api.get("api/categories")
 
-    suspend fun addCategory(name: String) {
-        api.send<CategoryRequest, Category>("POST", "api/categories", CategoryRequest(name))
-        changed()
-    }
+    suspend fun addCategory(name: String): Category =
+        api.send<CategoryRequest, Category>("POST", "api/categories", CategoryRequest(name)).also { changed() }
 
     suspend fun deleteCategory(id: Long) {
         api.exec("DELETE", "api/categories/$id")
