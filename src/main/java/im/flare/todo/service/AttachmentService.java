@@ -257,13 +257,13 @@ public class AttachmentService {
     }
 
     // RFC 6266/5987: 한글 파일명은 filename*, 구형 클라이언트용 ASCII filename 을 함께 지정
-    private static String contentDisposition(String type, String name) {
+    static String contentDisposition(String type, String name) {
         String ascii = name.replaceAll("[^\\x20-\\x7E]", "_").replace("\"", "_").replace("\\", "_");
         String encoded = URLEncoder.encode(name, StandardCharsets.UTF_8).replace("+", "%20");
         return "%s; filename=\"%s\"; filename*=UTF-8''%s".formatted(type, ascii, encoded);
     }
 
-    private static String sha256Hex(byte[] data) {
+    static String sha256Hex(byte[] data) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(data));
         } catch (NoSuchAlgorithmException e) {
