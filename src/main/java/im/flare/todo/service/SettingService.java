@@ -33,7 +33,7 @@ public class SettingService {
             appSettingRepository.save(AppSetting.builder()
                     .key(MAX_ATTACHMENT_SIZE)
                     .value("500MB")
-                    .description("첨부파일·본문 이미지 1개당 최대 크기 (예: 500MB, 1GB). 업로드 요청 상한(1GB)을 넘길 수 없음")
+                    .description("첨부파일·본문 이미지 1개당 최대 크기 (예: 500MB, 1GB). 업로드 요청 상한(2GB)을 넘길 수 없음")
                     .build());
         }
         if (!appSettingRepository.existsById(SHARE_PRESIGNED_DAYS)) {

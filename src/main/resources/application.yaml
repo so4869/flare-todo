@@ -9,8 +9,8 @@ spring:
   servlet:
     multipart:
       # 업로드 요청 자체의 상한. 실제 첨부 1개당 최대 크기는 DB(app_settings: attachment.max-file-size)에서 관리
-      max-file-size: 1GB
-      max-request-size: 1GB
+      max-file-size: 2GB
+      max-request-size: 2GB
   jpa:
     hibernate:
       ddl-auto: update
