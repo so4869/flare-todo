@@ -7,6 +7,7 @@ import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -31,6 +32,7 @@ public class AwsConfig {
      * {@code S3_PRESIGN_ACCESS_KEY_ID} / {@code S3_PRESIGN_SECRET_ACCESS_KEY} 로 넣는다. 비우면 기본 체인.
      */
     @Bean(destroyMethod = "close")
+    @Primary
     public S3Presigner s3Presigner(AttachmentProperties props,
                                    @Value("${app.attachment.presign-access-key-id:}") String accessKeyId,
                                    @Value("${app.attachment.presign-secret-access-key:}") String secretAccessKey) {
@@ -40,5 +42,15 @@ public class AwsConfig {
                     AwsBasicCredentials.create(accessKeyId.strip(), secretAccessKey.strip())));
         }
         return builder.build();
+    }
+
+    /**
+     * 브라우저/앱이 S3로 직접 올리는 멀티파트 업로드의 파트 서명 URL 용. 다운로드용 장기 키는 s3:GetObject 만 있으므로
+     * 항상 기본 체인(EC2 인스턴스 역할)으로 서명한다. 파트 URL 은 짧게(1시간) 쓰고 실패하면 다시 받으므로
+     * 임시 자격증명이어도 문제없다.
+     */
+    @Bean(destroyMethod = "close")
+    public S3Presigner s3UploadPresigner(AttachmentProperties props) {
+        return S3Presigner.builder().region(Region.of(props.region())).build();
     }
 }

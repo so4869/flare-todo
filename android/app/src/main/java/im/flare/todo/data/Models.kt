@@ -100,7 +100,25 @@ data class AttachmentConfig(
     /** S3 직접 링크 기본 유효기간(일). 서버 DB 설정(share.presigned-days) */
     val sharePresignedDays: Double = 7.0,
     val sharePresignedMaxDays: Double = 7.0,
+    /** 첨부 파일을 S3로 직접(멀티파트) 올릴지. 이 값을 모르는 이전 서버면 서버 경유로 올린다. */
+    val directUpload: Boolean = false,
 )
+
+// ── S3 직접 업로드 (멀티파트) ─────────────────────────────
+@Serializable
+data class UploadStartRequest(val name: String, val size: Long, val contentType: String? = null)
+
+@Serializable
+data class UploadStarted(val uploadId: Long, val partSize: Long, val partCount: Int)
+
+@Serializable
+data class SignPartsRequest(val partNumbers: List<Int>)
+
+@Serializable
+data class SignedPart(val partNumber: Int, val url: String)
+
+@Serializable
+data class SignedParts(val parts: List<SignedPart>)
 
 @Serializable
 data class CdnSession(val enabled: Boolean = false, val expiresAt: String? = null)

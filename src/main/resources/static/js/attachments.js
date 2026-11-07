@@ -55,12 +55,13 @@ const Attachments = (() => {
     cdnTimer = setInterval(refreshCdnSession, CDN_SESSION_REFRESH_MS);
   }
 
-  // ── 업로드 (진행률 표시를 위해 XHR 사용) ───────────────────
-  function upload(url, file, filename, onProgress) {
+  // ── 서버 경유 업로드 (본문 이미지, 직접 업로드를 못 쓸 때). 진행률 표시를 위해 XHR 사용 ──
+  function upload(url, file, filename, onProgress, ctl) {
     return new Promise((resolve, reject) => {
       const form = new FormData();
       form.append('file', file, filename || file.name);
       const xhr = new XMLHttpRequest();
+      if (ctl) ctl.onCancel(() => xhr.abort());
       xhr.open('POST', url);
       const token = localStorage.getItem('jwt_token');
       if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
@@ -77,8 +78,138 @@ const Attachments = (() => {
         else reject(new Error((data && data.message) || `업로드 실패 (${xhr.status})`));
       };
       xhr.onerror = () => reject(new Error('네트워크 오류로 업로드하지 못했습니다.'));
+      xhr.onabort = () => reject(new Error('업로드를 취소했습니다.'));
       xhr.send(form);
     });
+  }
+
+  // ── S3 직접 업로드 (멀티파트) ─────────────────────────────
+  // 파일 내용은 서버·로드밸런서를 거치지 않고 파트별 서명 URL로 S3에 바로 올라간다.
+  // 서버는 시작(/uploads) → 파트 서명(/parts) → 완료(/complete, S3에서 파트를 직접 확인) 만 처리한다.
+  // 버킷 CORS 에서 앱 도메인의 PUT 을 허용해야 한다 (docs/s3-direct-upload.md).
+  const PART_CONCURRENCY = 4;
+  const PART_ATTEMPTS = 4;
+  const SIGN_BATCH = 20;
+
+  // 취소 핸들. 업로드 중인 항목을 목록에서 지우면 cancel() 로 진행 중인 요청을 끊는다.
+  function uploadControl() {
+    const handlers = new Set();
+    return {
+      cancelled: false,
+      onCancel(fn) { if (this.cancelled) fn(); else handlers.add(fn); return () => handlers.delete(fn); },
+      cancel() { if (this.cancelled) return; this.cancelled = true; handlers.forEach(fn => { try { fn(); } catch (_) {} }); }
+    };
+  }
+
+  async function apiJson(url, method, body) {
+    const res = await authFetch(url, { method, body: body === undefined ? undefined : JSON.stringify(body) });
+    if (!res) throw new Error('로그인이 만료되었습니다.');
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* 비 JSON 응답 */ }
+    if (!res.ok || !data || !data.success) {
+      const err = new Error((data && data.message) || `요청 실패 (${res.status})`);
+      err.status = res.status;
+      throw err;
+    }
+    return data.data;
+  }
+
+  // 파트 하나를 서명 URL로 PUT. 실패 시 status(네트워크·CORS 오류면 0)를 담아 reject
+  function putPart(url, blob, onProgress, ctl) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const off = ctl.onCancel(() => xhr.abort());
+      const fail = (status, msg) => { off(); const e = new Error(msg); e.status = status; reject(e); };
+      xhr.open('PUT', url);
+      xhr.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded); };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) { off(); onProgress(blob.size); resolve(); }
+        else fail(xhr.status, `파일 조각 업로드 실패 (${xhr.status})`);
+      };
+      xhr.onerror = () => fail(0, '네트워크 오류로 업로드하지 못했습니다.');
+      xhr.onabort = () => fail(0, '업로드를 취소했습니다.');
+      xhr.send(blob);
+    });
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function uploadDirect(file, onProgress, ctl) {
+    const { uploadId, partSize, partCount } = await apiJson('/api/attachments/uploads', 'POST',
+      { name: file.name, size: file.size, contentType: file.type || null });
+    const base = `/api/attachments/uploads/${uploadId}`;
+    let anyPartDone = false;
+    try {
+      const loaded = new Array(partCount + 1).fill(0);
+      const report = () => onProgress && onProgress(Math.min(99, loaded.reduce((a, b) => a + b, 0) / file.size * 100));
+
+      // 파트 번호 → 서명 URL Promise. 여러 파트를 한 번에 서명받아 왕복을 줄인다.
+      const urls = new Map();
+      const sign = nums => {
+        const p = apiJson(`${base}/parts`, 'POST', { partNumbers: nums })
+          .then(d => new Map(d.parts.map(x => [x.partNumber, x.url])));
+        nums.forEach(n => urls.set(n, p.then(m => m.get(n))));
+      };
+      const urlFor = (n, fresh) => {
+        if (fresh || !urls.has(n)) {
+          const nums = [n];
+          if (!fresh) for (let k = n + 1; k <= partCount && nums.length < SIGN_BATCH; k++) if (!urls.has(k)) nums.push(k);
+          sign(nums);
+        }
+        return urls.get(n);
+      };
+
+      async function uploadPart(n) {
+        const blob = file.slice((n - 1) * partSize, Math.min(n * partSize, file.size));
+        for (let attempt = 1; ; attempt++) {
+          try {
+            const url = await urlFor(n, attempt > 1);   // 재시도 때는 새로 서명 (만료·자격증명 교체 대비)
+            await putPart(url, blob, l => { loaded[n] = l; report(); }, ctl);
+            anyPartDone = true;
+            return;
+          } catch (e) {
+            loaded[n] = 0;
+            report();
+            // 첫 파트부터 네트워크 오류면 CORS 미설정 등으로 보고 서버 경유 업로드로 넘긴다.
+            if (ctl.cancelled || attempt >= PART_ATTEMPTS || (!anyPartDone && e.status === 0 && attempt >= 2)) throw e;
+            await sleep(1000 * 2 ** (attempt - 1));
+          }
+        }
+      }
+
+      let next = 1;
+      const worker = async () => { while (next <= partCount && !ctl.cancelled) await uploadPart(next++); };
+      await Promise.all(Array.from({ length: Math.min(PART_CONCURRENCY, partCount) }, worker));
+      if (ctl.cancelled) throw new Error('업로드를 취소했습니다.');
+      const a = await apiJson(`${base}/complete`, 'POST');
+      if (onProgress) onProgress(100);
+      return a;
+    } catch (e) {
+      ctl.cancel();
+      authFetch(base, { method: 'DELETE' }).catch(() => {});
+      if (!anyPartDone && e.status === 0) e.fallback = true;
+      throw e;
+    }
+  }
+
+  // 할 일 첨부 파일 업로드: S3 직접 업로드, 쓸 수 없으면(설정 off, CORS 미설정 등) 서버 경유
+  async function uploadFile(file, onProgress, ctl, config) {
+    if (config && config.directUpload === false) return upload('/api/attachments', file, file.name, onProgress, ctl);
+    try {
+      return await uploadDirect(file, onProgress, uploadControlChild(ctl));
+    } catch (e) {
+      if (!e.fallback || ctl.cancelled) throw e;
+      console.warn('S3 직접 업로드를 쓸 수 없어 서버 경유로 올립니다.', e);
+      if (onProgress) onProgress(0);
+      return upload('/api/attachments', file, file.name, onProgress, ctl);
+    }
+  }
+
+  // 직접 업로드가 실패하면 자기 요청만 끊도록, 바깥 취소를 이어받는 하위 핸들을 쓴다.
+  function uploadControlChild(parent) {
+    const child = uploadControl();
+    parent.onCancel(() => child.cancel());
+    return child;
   }
 
   // ── TinyMCE 이미지 설정 ──────────────────────────────────
@@ -451,11 +582,12 @@ const Attachments = (() => {
           continue;
         }
         items.push(item);
-        upload('/api/attachments', file, file.name, p => {
+        item.ctl = uploadControl();
+        uploadFile(file, p => {
           item.progress = p;
           const bar = list.querySelector(`[data-key="${item.key}"] .attach-progress > div`);
           if (bar) bar.style.width = `${p}%`;
-        })
+        }, item.ctl, config)
           .then(a => Object.assign(item, a, { uploading: false }))
           .catch(e => Object.assign(item, { uploading: false, error: e.message }))
           .finally(render);
@@ -470,6 +602,7 @@ const Attachments = (() => {
       const btn = e.target.closest('.attach-remove');
       if (!btn) return;
       const key = btn.closest('.attach-item').dataset.key;
+      items.filter(a => a.key === key && a.uploading && a.ctl).forEach(a => a.ctl.cancel());
       items = items.filter(a => a.key !== key);
       render();
     });
