@@ -14,6 +14,7 @@ import im.flare.todo.service.UserService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -37,6 +38,10 @@ public class AttachmentController {
     private final SettingService settingService;
     private final UserService userService;
     private final AttachmentProperties props;
+
+    /** 첨부 파일을 S3로 직접 올리게 할지 (버킷 CORS 설정 필요). 끄면 클라이언트는 서버 경유로 올린다. */
+    @Value("${app.attachment.direct-upload:true}")
+    private boolean directUpload;
 
     /** 할 일 첨부 파일 업로드 (파일 선택 / 드래그 앤 드롭) */
     @PostMapping
@@ -65,6 +70,7 @@ public class AttachmentController {
         return ResponseEntity.ok(ApiResponse.success(Map.of(
                 "maxFileSize", max.toBytes(),
                 "maxFileSizeLabel", AttachmentService.formatSize(max),
+                "directUpload", directUpload,
                 "shareMaxDays", props.shareMaxDays(),
                 "sharePresignedDays", settingService.getSharePresignedDays(),
                 "sharePresignedMaxDays", SettingService.SHARE_PRESIGNED_MAX_DAYS)));

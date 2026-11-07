@@ -41,7 +41,7 @@ public class AttachmentService {
     private static final Pattern DATA_URI = Pattern.compile("^data:image/[\\w.+-]+;base64,(.+)$", Pattern.DOTALL);
     // 내용 해시 기반 키라 내용이 바뀌지 않으므로 오래 캐시해도 된다.
     private static final String IMAGE_CACHE_CONTROL = "max-age=31536000, immutable";
-    private static final String FILE_CACHE_CONTROL = "max-age=86400";
+    static final String FILE_CACHE_CONTROL = "max-age=86400";
 
     private final AttachmentRepository attachmentRepository;
     private final TodoRepository todoRepository;
@@ -75,9 +75,8 @@ public class AttachmentService {
     private Attachment uploadFile(User user, InputStream in, long size, String originalName, String rawContentType) {
         checkSize(size);
         String name = sanitizeFileName(originalName);
-        String contentType = Optional.ofNullable(rawContentType)
-                .filter(t -> !t.isBlank()).orElse("application/octet-stream");
-        String key = "u/%d/f/%s".formatted(user.getId(), UUID.randomUUID());
+        String contentType = normalizeContentType(rawContentType);
+        String key = newFileKey(user);
 
         // 파일은 형식과 무관하게 항상 다운로드로 내려보내 CDN 도메인에서 HTML/SVG 등이 실행되지 않게 한다.
         s3Client.putObject(b -> b.bucket(props.bucket()).key(key)
@@ -85,10 +84,28 @@ public class AttachmentService {
                         .contentDisposition(contentDisposition("attachment", name))
                         .cacheControl(FILE_CACHE_CONTROL),
                 RequestBody.fromInputStream(in, size));
+        return saveFile(user, key, name, contentType, size);
+    }
+
+    /** S3에 이미 올라간 파일(직접 업로드 완료분)을 첨부로 등록한다. */
+    @Transactional
+    public Attachment saveFile(User user, String key, String name, String contentType, long size) {
         return attachmentRepository.save(Attachment.builder()
                 .user(user).kind(Attachment.Kind.FILE).s3Key(key)
                 .originalName(name).contentType(contentType).size(size)
                 .build());
+    }
+
+    // CloudFront 서명 쿠키 정책 경로(/u/{userId}/*) 안의 첨부 파일 키
+    static String newFileKey(User user) {
+        return "u/%d/f/%s".formatted(user.getId(), UUID.randomUUID());
+    }
+
+    static String normalizeContentType(String raw) {
+        if (raw == null || raw.isBlank() || raw.length() > 150 || raw.chars().anyMatch(c -> c < 0x20 || c > 0x7E)) {
+            return "application/octet-stream";
+        }
+        return raw.strip();
     }
 
     /** 할 일에 첨부 파일 하나를 추가로 연결한다 (기존 첨부는 유지). */
@@ -182,7 +199,7 @@ public class AttachmentService {
                 .orElseThrow(() -> new IllegalArgumentException("첨부파일을 찾을 수 없습니다."));
     }
 
-    private void checkSize(long size) {
+    public void checkSize(long size) {
         DataSize max = settingService.getMaxAttachmentSize();
         if (size > max.toBytes()) {
             throw new IllegalArgumentException("첨부파일은 %s까지 올릴 수 있습니다.".formatted(formatSize(max)));
@@ -247,7 +264,7 @@ public class AttachmentService {
         }
     }
 
-    private static String sanitizeFileName(String name) {
+    static String sanitizeFileName(String name) {
         if (name == null || name.isBlank()) return "file";
         // 경로 구분자 제거 (일부 브라우저는 전체 경로를 보냄) 및 제어문자 제거
         String base = name.substring(Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\')) + 1);

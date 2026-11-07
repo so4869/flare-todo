@@ -58,6 +58,8 @@ app:
     private-key-path: ${CDN_PRIVATE_KEY_PATH:}   # CloudFront 서명용 개인키(PKCS#8 PEM). 비우면 서명 쿠키 미발급
     cookie-domain: flare.im                     # todo.flare.im 과 todo-att.flare.im 이 공유하는 상위 도메인
     cookie-secure: true
+    # 첨부 파일을 클라이언트가 S3로 직접(멀티파트) 올린다. 버킷 CORS 필요 (docs/s3-direct-upload.md)
+    direct-upload: ${ATTACHMENT_DIRECT_UPLOAD:true}
     cookie-ttl: 12h
     orphan-retention: 1d
     share-base-url: ${SHARE_BASE_URL:https://todo.flare.im}

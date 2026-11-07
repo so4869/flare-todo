@@ -50,6 +50,12 @@ class ApiClient(private val session: SessionStore) {
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
+    // S3 직접 업로드용. 파트(8MB 이상)를 느린 회선에서도 끝까지 보낼 수 있게 타임아웃을 넉넉히 둔다.
+    private val uploadHttp = http.newBuilder()
+        .writeTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .build()
+
     private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /** 인증이 필요한 요청이 401 을 받으면 발행된다 (토큰 만료). */
@@ -113,6 +119,13 @@ class ApiClient(private val session: SessionStore) {
     /** data 가 없는(Void) 요청 */
     suspend fun exec(method: String, path: String, body: RequestBody? = null) {
         call(method, path, JsonElement.serializer(), body = body)
+    }
+
+    /** 서명 URL(S3 등 외부 주소)로 PUT. 인증 헤더를 붙이지 않으며 2xx 가 아니면 [ApiException]. */
+    suspend fun putSigned(url: String, body: RequestBody) {
+        val request = Request.Builder().url(url).put(body).build()
+        val code = uploadHttp.newCall(request).await { it.code }
+        if (code !in 200..299) throw ApiException(code, "파일 조각 업로드에 실패했습니다. (HTTP $code)")
     }
 
     private suspend fun <R> Call.await(block: (Response) -> R): R = suspendCancellableCoroutine { cont ->
