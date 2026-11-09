@@ -56,8 +56,9 @@ a.attach-name:hover { color: #0d6efd; text-decoration: underline; }
   flex: 0 0 3.25rem; display: flex; align-items: center;
   padding: 0 1.25rem; background: #1c1c1e; color: #d0d0d0; font-size: .95rem;
 }
-.attach-lb-name, .attach-lb-spacer { flex: 1; min-width: 0; }
-.attach-lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attach-lb-name, .attach-lb-dim { flex: 1; min-width: 0; white-space: nowrap; }
+.attach-lb-name { overflow: hidden; text-overflow: ellipsis; }
+.attach-lb-dim { text-align: right; color: #9a9a9a; font-variant-numeric: tabular-nums; }
 .attach-lb-ctl { display: flex; align-items: center; gap: 1.25rem; }
 .attach-lb-count { min-width: 6rem; text-align: center; }
 .attach-lb-nav {

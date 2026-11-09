@@ -57,12 +57,18 @@ const Attachments = (() => {
             <span class="attach-lb-count"></span>
             <button type="button" class="attach-lb-nav attach-lb-next" aria-label="다음" tabindex="-1"><i class="bi bi-chevron-right"></i></button>
           </div>
-          <div class="attach-lb-spacer"></div>
+          <div class="attach-lb-dim"></div>
         </div>
       </div>`);
     lightbox = document.body.lastElementChild;
-    // 상세 모달(Bootstrap) 안에서 열려도 포커스가 모달 밖으로 나가지 않도록 클릭 시 포커스 이동을 막는다
-    lightbox.addEventListener('mousedown', e => e.preventDefault());
+    // 상세 모달(Bootstrap) 안에서 열려도 포커스가 모달 밖으로 나가지 않도록 버튼 클릭 시 포커스 이동을 막는다.
+    // (preventDefault 는 글자 선택도 막으므로 파일명·해상도 영역은 제외)
+    lightbox.addEventListener('mousedown', e => {
+      if (!e.target.closest('.attach-lb-name, .attach-lb-dim')) e.preventDefault();
+    });
+    lightbox.querySelector('.attach-lb-img').addEventListener('load', e => {
+      lightbox.querySelector('.attach-lb-dim').textContent = `${e.target.naturalWidth} × ${e.target.naturalHeight}`;
+    });
     lightbox.addEventListener('click', e => {
       if (e.target.closest('.attach-lb-prev')) showLightboxAt(lbIndex - 1);
       else if (e.target.closest('.attach-lb-next')) showLightboxAt(lbIndex + 1);
@@ -89,6 +95,7 @@ const Attachments = (() => {
     lbIndex = ((i % n) + n) % n;
     const item = lbItems[lbIndex];
     resetLightboxZoom();
+    lightbox.querySelector('.attach-lb-dim').textContent = '';
     lbImg().src = item.url;
     lightbox.querySelector('.attach-lb-name').textContent = item.name || '';
     lightbox.querySelector('.attach-lb-count').textContent = `${n}개 중 ${lbIndex + 1}개`;
