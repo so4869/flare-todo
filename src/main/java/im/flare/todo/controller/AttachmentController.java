@@ -95,6 +95,17 @@ public class AttachmentController {
         }
     }
 
+    /** 새 탭에서 바로 열어 보는(inline) 짧은 S3 서명 URL. PDF·마크다운 미리보기에 쓴다. */
+    @GetMapping("/{id}/preview-url")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> previewUrl(@PathVariable Long id, Authentication auth) {
+        try {
+            User user = userService.findByUsername(auth.getName());
+            return ResponseEntity.ok(ApiResponse.success(Map.of("url", shareLinkService.previewUrl(id, user))));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     /** CDN(CloudFront) 서명 쿠키 발급. 페이지 로드 시와 만료 전에 주기적으로 호출한다. */
     @PostMapping("/cdn-session")
     public ResponseEntity<ApiResponse<Map<String, Object>>> cdnSession(Authentication auth, HttpServletResponse response) {

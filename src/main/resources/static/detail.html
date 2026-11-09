@@ -187,6 +187,7 @@
     document.title = t.title + ' - Flare Todo';
     document.getElementById('viewTitle').textContent = t.title;
     document.getElementById('viewBody').innerHTML = t.body || '<span class="text-muted">본문 없음</span>';
+    Attachments.bindBodyImages(document.getElementById('viewBody'), () => currentTodo?.attachments);
     const hasAttach = t.attachments && t.attachments.length > 0;
     document.getElementById('viewAttachArea').classList.toggle('d-none', !hasAttach);
     Attachments.renderList(document.getElementById('viewAttachList'), t.attachments);

@@ -27,6 +27,148 @@ const Attachments = (() => {
     return 'bi-file-earmark';
   }
 
+  // 미리보기 방식: 'image' = 라이트박스, 'tab' = 새 탭(브라우저 내장 뷰어·확장 프로그램), null = 없음
+  const IMAGE_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'];
+  const TAB_EXTS = ['pdf', 'md', 'markdown', 'txt'];
+  function previewKind(a) {
+    const ext = ((a.name || '').split('.').pop() || '').toLowerCase();
+    const type = a.contentType || '';
+    if (a.kind === 'IMAGE' || type.startsWith('image/') || IMAGE_EXTS.includes(ext)) return 'image';
+    if (type === 'application/pdf' || TAB_EXTS.includes(ext)) return 'tab';
+    return null;
+  }
+
+  // ── 이미지 라이트박스 ────────────────────────────────────
+  // 이미지만 띄우고, 이미지 밖(배경)을 누르거나 Esc 로 닫는다. 하단 바: 왼쪽 파일명, 가운데 이전/카운터/다음.
+  // 이미지를 누르면 확대(원본 크기, 작으면 2배)·다시 누르면 화면 맞춤. 좌우 버튼·방향키로 순환.
+  let lightbox = null;
+  let lbItems = [];   // [{ url, name }]
+  let lbIndex = 0;
+
+  function ensureLightbox() {
+    if (lightbox) return lightbox;
+    document.body.insertAdjacentHTML('beforeend', `
+      <div class="attach-lightbox" hidden>
+        <div class="attach-lb-stage"><img class="attach-lb-img" alt=""></div>
+        <div class="attach-lb-bar">
+          <div class="attach-lb-name"></div>
+          <div class="attach-lb-ctl">
+            <button type="button" class="attach-lb-nav attach-lb-prev" aria-label="이전" tabindex="-1"><i class="bi bi-chevron-left"></i></button>
+            <span class="attach-lb-count"></span>
+            <button type="button" class="attach-lb-nav attach-lb-next" aria-label="다음" tabindex="-1"><i class="bi bi-chevron-right"></i></button>
+          </div>
+          <div class="attach-lb-spacer"></div>
+        </div>
+      </div>`);
+    lightbox = document.body.lastElementChild;
+    // 상세 모달(Bootstrap) 안에서 열려도 포커스가 모달 밖으로 나가지 않도록 클릭 시 포커스 이동을 막는다
+    lightbox.addEventListener('mousedown', e => e.preventDefault());
+    lightbox.addEventListener('click', e => {
+      if (e.target.closest('.attach-lb-prev')) showLightboxAt(lbIndex - 1);
+      else if (e.target.closest('.attach-lb-next')) showLightboxAt(lbIndex + 1);
+      else if (e.target.closest('.attach-lb-img')) toggleLightboxZoom();
+      else if (!e.target.closest('.attach-lb-bar')) closeLightbox();
+    });
+    // capture 단계에서 먼저 받아 상세 모달의 Esc 닫기 등으로 전달되지 않게 한다
+    document.addEventListener('keydown', e => {
+      if (lightbox.hidden) return;
+      if (e.key === 'Escape') closeLightbox();
+      else if (e.key === 'ArrowLeft') showLightboxAt(lbIndex - 1);
+      else if (e.key === 'ArrowRight') showLightboxAt(lbIndex + 1);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
+    return lightbox;
+  }
+
+  function lbImg() { return lightbox.querySelector('.attach-lb-img'); }
+
+  function showLightboxAt(i) {
+    const n = lbItems.length;
+    lbIndex = ((i % n) + n) % n;
+    const item = lbItems[lbIndex];
+    resetLightboxZoom();
+    lbImg().src = item.url;
+    lightbox.querySelector('.attach-lb-name').textContent = item.name || '';
+    lightbox.querySelector('.attach-lb-count').textContent = `${n}개 중 ${lbIndex + 1}개`;
+  }
+
+  function resetLightboxZoom() {
+    const img = lbImg();
+    img.classList.remove('attach-lb-zoomed');
+    img.style.width = '';
+    lightbox.querySelector('.attach-lb-stage').scrollTo(0, 0);
+  }
+
+  function toggleLightboxZoom() {
+    const img = lbImg();
+    if (img.classList.contains('attach-lb-zoomed')) { resetLightboxZoom(); return; }
+    if (!img.naturalWidth) return;
+    const fitted = img.getBoundingClientRect().width;
+    // 화면보다 큰 이미지는 원본 크기로, 작은 이미지는 2배로
+    const target = img.naturalWidth > fitted + 1 ? img.naturalWidth : fitted * 2;
+    img.classList.add('attach-lb-zoomed');
+    img.style.width = `${Math.round(target)}px`;
+  }
+
+  // items: URL 문자열 또는 { url, name } 배열
+  function openImageViewer(items, index = 0) {
+    const list = (items || [])
+      .map(it => typeof it === 'string' ? { url: it, name: '' } : it)
+      .filter(it => it && it.url);
+    if (!list.length) return;
+    ensureLightbox();
+    lbItems = list;
+    lightbox.classList.toggle('attach-lb-single', list.length < 2);
+    showLightboxAt(index);
+    lightbox.hidden = false;
+  }
+
+  function closeLightbox() {
+    if (!lightbox) return;
+    lightbox.hidden = true;
+    resetLightboxZoom();
+    lbImg().removeAttribute('src');
+  }
+
+  // 본문 이미지 이름: 할 일의 첨부 목록(getAttachments)에서 같은 URL 을 찾고, 없으면 alt/title, 그래도 없으면 URL 마지막 조각
+  function bodyImageName(img, getAttachments) {
+    const found = (typeof getAttachments === 'function' ? getAttachments() || [] : []).find(a => a.url === img.src);
+    if (found) return found.name;
+    if (img.alt || img.title) return img.alt || img.title;
+    try { return decodeURIComponent(new URL(img.src).pathname.split('/').pop() || ''); } catch { return ''; }
+  }
+
+  // 본문(root: 요소 또는 ShadowRoot) 안의 이미지를 누르면 본문 이미지 전체를 라이트박스로 넘긴다
+  function bindBodyImages(root, getAttachments) {
+    if (!root || root.__attachBodyBound) return;
+    root.__attachBodyBound = true;
+    root.addEventListener('click', e => {
+      const img = e.target.closest ? e.target.closest('img') : null;
+      if (!img || !img.src) return;
+      if (img.closest('a')) return;   // 링크로 감싼 이미지는 링크 동작 유지
+      e.preventDefault();
+      const imgs = [...root.querySelectorAll('img')].filter(el => el.src);
+      openImageViewer(imgs.map(el => ({ url: el.src, name: bodyImageName(el, getAttachments) })), Math.max(0, imgs.indexOf(img)));
+    });
+  }
+
+  // PDF·마크다운: 서버에서 inline 서명 URL 을 받아 새 탭에서 연다 (팝업 차단을 피하려고 탭은 먼저 연다)
+  async function openInNewTab(attachmentId) {
+    const win = window.open('about:blank', '_blank');
+    try {
+      const res = await authFetch(`/api/attachments/${attachmentId}/preview-url`);
+      const data = res ? await res.json() : null;
+      if (!data || !data.success) throw new Error(data?.message || '미리보기 URL을 받지 못했습니다.');
+      if (win) { win.opener = null; win.location.replace(data.data.url); }
+      else window.open(data.data.url, '_blank', 'noopener');
+    } catch (e) {
+      if (win) win.close();
+      alert(e.message || '미리보기를 열 수 없습니다.');
+    }
+  }
+
   // ── 서버 설정 (최대 첨부 크기는 DB에서 관리) ─────────────────
   let configPromise = null;
   function getConfig() {
@@ -376,7 +518,15 @@ const Attachments = (() => {
     ul.addEventListener('click', e => {
       const li = e.target.closest('.attach-item');
       if (!li) return;
-      if (e.target.closest('.attach-share-btn')) {
+      if (e.target.closest('.attach-preview-btn')) {
+        e.preventDefault();
+        if (li.dataset.preview === 'image') {
+          const imgs = [...ul.querySelectorAll('.attach-item[data-preview="image"]')];
+          openImageViewer(imgs.map(el => ({ url: el.dataset.url, name: el.querySelector('.attach-name')?.textContent || '' })), imgs.indexOf(li));
+        } else {
+          openInNewTab(li.dataset.id);
+        }
+      } else if (e.target.closest('.attach-share-btn')) {
         const open = li.querySelector('.attach-share');
         if (open) { open.remove(); return; }
         li.insertAdjacentHTML('beforeend', sharePanelHtml());
@@ -528,14 +678,16 @@ const Attachments = (() => {
   function itemHtml(a, removable) {
     const isImage = a.kind === 'IMAGE';
     const ready = a.id && !a.uploading && !a.error;
+    const preview = ready && a.url ? previewKind(a) : null;
     return `
-      <li class="attach-item" data-key="${esc(a.key ?? '')}" data-id="${esc(a.id ?? '')}">
+      <li class="attach-item" data-key="${esc(a.key ?? '')}" data-id="${esc(a.id ?? '')}"${preview ? ` data-preview="${preview}" data-url="${esc(a.url)}"` : ''}>
         <i class="bi ${iconFor(a.name, a.contentType)} attach-icon"></i>
         ${a.url
           ? `<a class="attach-name" href="${esc(a.url)}"${isImage ? ' target="_blank" rel="noopener"' : ''} title="${esc(a.name)}">${esc(a.name)}</a>`
           : `<span class="attach-name">${esc(a.name)}</span>`}
         ${isImage ? '<span class="attach-badge" title="본문에 들어 있는 이미지입니다. 본문에서 지우면 목록에서도 사라집니다.">본문</span>' : ''}
         <span class="attach-size">${a.error ? `<span class="text-danger">${esc(a.error)}</span>` : formatSize(a.size)}</span>
+        ${preview ? `<button type="button" class="btn btn-sm btn-link attach-preview-btn" title="${preview === 'image' ? '미리보기' : '새 탭에서 열기'}"><i class="bi ${preview === 'image' ? 'bi-eye' : 'bi-box-arrow-up-right'}"></i></button>` : ''}
         ${ready ? '<button type="button" class="btn btn-sm btn-link attach-share-btn" title="외부 공유 링크 만들기"><i class="bi bi-share"></i></button>' : ''}
         ${removable && !isImage ? '<button type="button" class="btn-close attach-remove" aria-label="첨부 삭제" title="삭제"></button>' : ''}
         ${a.uploading ? `<div class="attach-progress"><div style="width:${a.progress || 0}%"></div></div>` : ''}
@@ -631,5 +783,6 @@ const Attachments = (() => {
     };
   }
 
-  return { keepCdnSession, refreshCdnSession, editorImageOptions, createBox, renderList, formatSize, openShareManager, downloadAll };
+  return { keepCdnSession, refreshCdnSession, editorImageOptions, createBox, renderList, formatSize, openShareManager, downloadAll,
+           openImageViewer, bindBodyImages };
 })();

@@ -126,16 +126,41 @@ public class ShareLinkService {
         return presign(attachmentService.getOwnedAttachment(attachmentId, user), ttl);
     }
 
+    /**
+     * 브라우저 탭에서 바로 열어 보는(inline) 짧은 S3 서명 URL. PDF 는 브라우저 내장 뷰어,
+     * 마크다운은 text/markdown 으로 내려 확장 프로그램이 렌더링하게 한다. share-redirect-ttl 동안만 유효.
+     */
+    @Transactional(readOnly = true)
+    public String previewUrl(Long attachmentId, User user) {
+        return presign(attachmentService.getOwnedAttachment(attachmentId, user), props.shareRedirectTtl(), true);
+    }
+
     private String presign(Attachment a, Duration ttl) {
         // 파일은 원래 이름으로 다운로드, 이미지는 브라우저에서 바로 보이도록
-        String disposition = a.getKind() == Attachment.Kind.FILE
-                ? "attachment; filename*=UTF-8''" + URLEncoder.encode(a.getOriginalName(), StandardCharsets.UTF_8).replace("+", "%20")
-                : "inline";
+        return presign(a, ttl, a.getKind() != Attachment.Kind.FILE);
+    }
+
+    private String presign(Attachment a, Duration ttl, boolean inline) {
+        String encodedName = URLEncoder.encode(a.getOriginalName(), StandardCharsets.UTF_8).replace("+", "%20");
+        String disposition = (inline ? "inline" : "attachment") + "; filename*=UTF-8''" + encodedName;
+        String contentType = inline ? previewContentType(a) : null;
         return s3Presigner.presignGetObject(r -> r
                 .signatureDuration(ttl)
-                .getObjectRequest(g -> g.bucket(props.bucket()).key(a.getS3Key())
-                        .responseContentDisposition(disposition)))
+                .getObjectRequest(g -> {
+                    g.bucket(props.bucket()).key(a.getS3Key()).responseContentDisposition(disposition);
+                    if (contentType != null) g.responseContentType(contentType);
+                }))
                 .url().toString();
+    }
+
+    /** 미리보기용 Content-Type. 업로드 시 브라우저가 알려 준 타입이 빈약한(octet-stream) 경우 확장자로 보완한다. */
+    private static String previewContentType(Attachment a) {
+        String name = a.getOriginalName() == null ? "" : a.getOriginalName().toLowerCase();
+        if (name.endsWith(".md") || name.endsWith(".markdown")) return "text/markdown; charset=utf-8";
+        if (name.endsWith(".pdf")) return "application/pdf";
+        if (name.endsWith(".txt")) return "text/plain; charset=utf-8";
+        String stored = a.getContentType();
+        return stored == null || stored.equals("application/octet-stream") ? null : stored;
     }
 
     // 256비트 무작위 토큰 (URL-safe base64, 43자)
